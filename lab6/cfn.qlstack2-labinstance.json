@@ -1,0 +1,283 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "DevOps Engineering on AWS v1.1 Lab 6 - One-Click Publishing",
+    "Parameters": {
+        "KeyName": {
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+        },
+        "InstanceType": {
+            "Description": "WebServer EC2 instance type",
+            "Type": "String",
+            "Default": "t2.medium",
+            "AllowedValues": [
+                "t2.micro",
+                "t2.small",
+                "t2.medium"
+            ],
+            "ConstraintDescription": "must be a valid EC2 instance type."
+        },
+        "LabUrlPrefix": {
+            "Type": "String",
+            "Default": "https://d2lrzjb0vjvpn5.cloudfront.net/devops/v1.1"
+        }
+    },
+    "Mappings": {
+        "AmazonLinuxAMI": {
+      "us-east-1": {
+        "AMI": "ami-1ecae776"
+      },
+      "us-west-1": {
+        "AMI": "ami-d114f295"
+      },
+      "us-west-2": {
+        "AMI": "ami-e7527ed7"
+      },
+      "eu-west-1": {
+        "AMI": "ami-a10897d6"
+      },
+      "eu-central-1": {
+        "AMI": "ami-a8221fb5"
+      },
+      "sa-east-1": {
+        "AMI": "ami-b52890a8"
+      },
+      "ap-southeast-1": {
+        "AMI": "ami-68d8e93a"
+      },
+      "ap-southeast-2": {
+        "AMI": "ami-fd9cecc7"
+      },
+      "ap-northeast-1": {
+        "AMI": "ami-cbf90ecb"
+      }
+        }
+    },
+    "Resources": {
+        "BuildBoxEC2InstanceProfile": {
+            "Properties": {
+                "Path": "/",
+                "Roles": [
+                    {
+                        "Ref": "BuildBoxEC2TrustAccessRole"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::InstanceProfile"
+        },
+        "BuildBoxEC2TrustAccessRole": {
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "Path": "/"
+            },
+            "Type": "AWS::IAM::Role"
+        },
+        "BuildBoxInstancePolicy": {
+            "Properties": {
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "s3:get*",
+                                "s3:list*",
+                                "ec2:*",
+                                "cloudformation:*",
+				"cloudwatch:*",
+				"dynamodb:*",
+				"autoscaling:*",
+				"elasticloadbalancing:*"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": "*"
+                        }
+                    ]
+                },
+                "PolicyName": "BuildBoxPolicy",
+                "Roles": [
+                    {
+                        "Ref": "BuildBoxEC2TrustAccessRole"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::Policy"
+        },
+        "BuildBoxApp": {
+            "Type": "AWS::EC2::Instance",
+            "DependsOn": [
+                "sgBuildBoxApp"
+            ],
+            "Properties": {
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "SecurityGroups": [
+                    {
+                        "Ref": "sgBuildBoxApp"
+                    }
+                ],
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "IamInstanceProfile": {
+                    "Ref": "BuildBoxEC2InstanceProfile"
+                },
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "AmazonLinuxAMI",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "AMI"
+                    ]
+                },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -ex\n",
+                                "yum update -y\n",
+                                "yum -y install php httpd python-pip\n",
+                                "export REGION=",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "export KeyName=",
+                                {
+                                    "Ref": "KeyName"
+                                },
+                                "\n",
+				"export AWS_DEFAULT_REGION=$REGION\n",
+                                "echo export REGION=$REGION >> /home/ec2-user/.bash_profile\n",
+                                "echo export REGION=$REGION >> /var/www/html/.env_config\n",
+                                "echo export KeyName=$KeyName >> /home/ec2-user/.bash_profile\n",
+                                "echo export KeyName=$KeyName >> /var/www/html/.env_config\n",
+                                "cd /var/www/html/\n",
+                                "curl -O ",
+                                {
+                                    "Ref": "LabUrlPrefix"
+                                },
+                                "/lab-6-pipeline/static/DevOps-Lab6_MGMT-Server_1.0.tar\n",
+                                "tar -xvf /var/www/html/DevOps-Lab6_MGMT-Server_1.0.tar\n",
+                                "service httpd start\n",
+                                "chmod 777 -R /var/www/html/\n",
+                                "sed -i 's/Lab6Key/'$KeyName'/g' /var/www/html/create_ami.php\n",
+                                "chown -R ec2-user:ec2-user /home/ec2-user/\n"
+                            ]
+                        ]
+                    }
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "BuildBox-Version"
+                    },
+                    {
+                        "Key": "DeploymentType",
+                        "Value": "GoldenImage_Build_Machine"
+                    }
+                ]
+            }
+        },
+        "sgBuildBoxApp": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "BuildBoxAppServerSG",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "BuildBox_App1"
+                    },
+                    {
+                        "Key": "SW_version",
+                        "Value": ""
+                    }
+                ],
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "443",
+                        "ToPort": "443",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "AmiDynamoDBTable": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+                "AttributeDefinitions": [
+                    {
+                        "AttributeName": "requestID",
+                        "AttributeType": "S"
+                    }
+                ],
+                "KeySchema": [
+                    {
+                        "AttributeName": "requestID",
+                        "KeyType": "HASH"
+                    }
+                ],
+                "ProvisionedThroughput": {
+                    "ReadCapacityUnits": "2",
+                    "WriteCapacityUnits": "2"
+                },
+                "TableName": "CustomAmiTracking"
+            }
+        }
+    },
+    "Outputs": {
+        "InstanceId": {
+            "Description": "InstanceIdofthenewlycreatedEC2instance",
+            "Value": {
+                "Ref": "BuildBoxApp"
+            }
+        },
+        "PublicDNS": {
+            "Description": "PublicDNSNameofthenewlycreatedEC2instance",
+            "Value": {
+                "Fn::GetAtt": [
+                    "BuildBoxApp",
+                    "PublicDnsName"
+                ]
+            }
+        },
+        "PublicIP": {
+            "Description": "PublicIPaddressofthenewlycreatedEC2instance",
+            "Value": {
+                "Fn::GetAtt": [
+                    "BuildBoxApp",
+                    "PublicIp"
+                ]
+            }
+        }
+    }
+}

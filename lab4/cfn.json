@@ -1,0 +1,751 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "DevOps Engineering v1.1 on AWS Lab 4 - AWS CodeDeploy. This lab is limited to CodeDeploy supported regions - us-east-1, us-west-2, eu-west-1, and ap-southeast-2 as of 05-2015",
+	"Parameters" : {
+		"DevVPCCIDR" : {
+			"Description" : "CIDR Block for Developer VPC",
+			"Type" : "String",
+			"Default" : "10.0.0.0/16",
+			"AllowedValues" : ["10.0.0.0/16"]
+		},
+		"DevPublicSubnetCIDR" : {
+			"Description" : "DevEnv Public Subnet",
+			"Type" : "String",
+			"Default" : "10.0.10.0/24",
+			"AllowedValues" : ["10.0.10.0/24"]
+		},
+		"KeyName" : {
+			"Type" : "String",
+			"Description" : "Keyname for the keypair that Qwiklab will use to launch EC2 instances",
+			"Default" : "default-lab-key"
+		},
+		"LabUrlPrefix" : {
+			"Type" : "String",
+			"Default" : "https://d2lrzjb0vjvpn5.cloudfront.net/devops/v1.1"
+		},
+		"AWSAmiId" : {
+			"Description" : "The name of the Windows AMI to find based on search",
+			"Type" : "String",
+			"Default" : "x86_64,Windows_Server-2012-R2_RTM-English-64Bit-Base"
+		}
+}, "Mappings" : {
+	"AmazonLinuxAMI": {
+      "us-east-1": {
+        "AMI": "ami-1ecae776"
+      },
+      "us-west-1": {
+        "AMI": "ami-d114f295"
+      },
+      "us-west-2": {
+        "AMI": "ami-e7527ed7"
+      },
+      "eu-west-1": {
+        "AMI": "ami-a10897d6"
+      },
+      "eu-central-1": {
+        "AMI": "ami-a8221fb5"
+      },
+      "sa-east-1": {
+        "AMI": "ami-b52890a8"
+      },
+      "ap-southeast-1": {
+        "AMI": "ami-68d8e93a"
+      },
+      "ap-southeast-2": {
+        "AMI": "ami-fd9cecc7"
+      },
+      "ap-northeast-1": {
+        "AMI": "ami-cbf90ecb"
+      }
+	}
+},
+	"Resources" : {
+		"DevVPC" : {
+			"Type" : "AWS::EC2::VPC",
+			"Properties" : {
+				"CidrBlock" : {
+					"Ref" : "DevVPCCIDR"
+				},
+				"EnableDnsSupport" : "true",
+				"EnableDnsHostnames" : "true",
+				"Tags" : [{
+						"Key" : "VPC",
+						"Value" : "Development VPC"
+					}, {
+						"Key" : "Name",
+						"Value" : "Development VPC"
+					}
+				]
+			}
+		},
+		"DevInternetGateway" : {
+			"Type" : "AWS::EC2::InternetGateway",
+			"DependsOn" : "DevVPC"
+		},
+		"DevAttachGateway" : {
+			"Type" : "AWS::EC2::VPCGatewayAttachment",
+			"DependsOn" : ["DevVPC", "DevInternetGateway"],
+			"Properties" : {
+				"VpcId" : {
+					"Ref" : "DevVPC"
+				},
+				"InternetGatewayId" : {
+					"Ref" : "DevInternetGateway"
+				}
+			}
+		},
+		"DevPublicSubnet" : {
+			"Type" : "AWS::EC2::Subnet",
+			"DependsOn" : "DevAttachGateway",
+			"Properties" : {
+				"VpcId" : {
+					"Ref" : "DevVPC"
+				},
+				"CidrBlock" : {
+					"Ref" : "DevPublicSubnetCIDR"
+				},
+				"AvailabilityZone" : {
+					"Fn::Select" : [
+						"0", {
+							"Fn::GetAZs" : ""
+						}
+					]
+				},
+				"Tags" : [{
+						"Key" : "Name",
+						"Value" : "Dev Public Subnet"
+					}
+				]
+			}
+		},
+		"DevPublicRouteTable" : {
+			"Type" : "AWS::EC2::RouteTable",
+			"DependsOn" : ["DevVPC", "DevAttachGateway"],
+			"Properties" : {
+				"VpcId" : {
+					"Ref" : "DevVPC"
+				},
+				"Tags" : [{
+						"Key" : "Name",
+						"Value" : "Dev Public Route Table"
+					}
+				]
+			}
+		},
+		"DevPublicRoute" : {
+			"Type" : "AWS::EC2::Route",
+			"DependsOn" : ["DevPublicRouteTable", "DevAttachGateway"],
+			"Properties" : {
+				"RouteTableId" : {
+					"Ref" : "DevPublicRouteTable"
+				},
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"GatewayId" : {
+					"Ref" : "DevInternetGateway"
+				}
+			}
+		},
+		"DevPublicSubnetRouteTableAssociation" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+			"DependsOn" : ["DevPublicRouteTable", "DevPublicSubnet", "DevAttachGateway"],
+			"Properties" : {
+				"SubnetId" : {
+					"Ref" : "DevPublicSubnet"
+				},
+				"RouteTableId" : {
+					"Ref" : "DevPublicRouteTable"
+				}
+			}
+		},
+		"WebServerSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"DependsOn" : "DevAttachGateway",
+			"Properties" : {
+				"GroupDescription" : "Security Group for Web server",
+				"VpcId" : {
+					"Ref" : "DevVPC"
+				},
+				"Tags" : [{
+						"Key" : "Name",
+						"Value" : "WebServerSecurityGroup"
+					}, {
+						"Key" : "InstanceType",
+						"Value" : "General"
+					}
+				],
+				"SecurityGroupEgress" : [{
+						"IpProtocol" : "tcp",
+						"FromPort" : "0",
+						"ToPort" : "65535",
+						"CidrIp" : "0.0.0.0/0"
+					}, {
+						"IpProtocol" : "udp",
+						"FromPort" : "0",
+						"ToPort" : "65535",
+						"CidrIp" : "0.0.0.0/0"
+					}
+				],
+				"SecurityGroupIngress" : [{
+						"IpProtocol" : "tcp",
+						"FromPort" : "22",
+						"ToPort" : "22",
+						"CidrIp" : "0.0.0.0/0"
+					}, {
+					"IpProtocol" : "tcp",
+					"FromPort" : "80",
+					"ToPort" : "80",
+					"CidrIp" : "0.0.0.0/0"
+				}
+				]
+		}
+	},
+	"RootRole" : {
+		"Type" : "AWS::IAM::Role",
+		"Properties" : {
+			"AssumeRolePolicyDocument" : {
+				"Version" : "2012-10-17",
+				"Statement" : [{
+						"Effect" : "Allow",
+						"Principal" : {
+							"Service" : ["ec2.amazonaws.com"]
+						},
+						"Action" : ["sts:AssumeRole"]
+					}
+				]
+			},
+			"Path" : "/",
+			"Policies" : [{
+					"PolicyName" : "root",
+					"PolicyDocument" : {
+						"Version" : "2012-10-17",
+						"Statement" : [{
+								"Effect" : "Allow",
+								"Action" : "*",
+								"Resource" : "*"
+							}
+						]
+					}
+				}
+			]
+		}
+	},
+	"RootInstanceProfile" : {
+		"Type" : "AWS::IAM::InstanceProfile",
+		"DependsOn" : "RootRole",
+		"Properties" : {
+			"Path" : "/",
+			"Roles" : [{
+					"Ref" : "RootRole"
+				}
+			]
+		}
+	},
+	"WebServerWaitHandle01" : {
+		"Type" : "AWS::CloudFormation::WaitConditionHandle",
+		"Properties" : {}
+	},
+	"WebServerWaitCondition01" : {
+		"Type" : "AWS::CloudFormation::WaitCondition",
+		"DependsOn" : "CommandHost",
+		"Properties" : {
+			"Handle" : {
+				"Ref" : "WebServerWaitHandle01"
+			},
+			"Timeout" : "1800"
+		}
+	},
+	"CommandHost" : {
+		"Type" : "AWS::EC2::Instance",
+		"DependsOn" : ["RootInstanceProfile", "DevPublicSubnet", "WebServerSecurityGroup", "DevAttachGateway"],
+		"Properties" : {
+			"KeyName" : {
+				"Ref" : "KeyName"
+			},
+			"IamInstanceProfile" : {
+				"Ref" : "RootInstanceProfile"
+			},
+			"ImageId" : {
+				"Fn::FindInMap" : [
+					"AmazonLinuxAMI", {
+						"Ref" : "AWS::Region"
+					},
+					"AMI"
+				]
+			},
+			"InstanceType" : "t2.medium",
+			"NetworkInterfaces" : [{
+					"DeviceIndex" : "0",
+					"AssociatePublicIpAddress" : "true",
+					"SubnetId" : {
+						"Ref" : "DevPublicSubnet"
+					},
+					"GroupSet" : [{
+							"Ref" : "WebServerSecurityGroup"
+						}
+					]
+				}
+			],
+			"Tags" : [{
+					"Key" : "Name",
+					"Value" : "Command Host"
+				}, {
+					"Key" : "InstanceType",
+					"Value" : "Infrastructure"
+				}, {
+					"Key" : "DeploymentType",
+					"Value" : "Development"
+				}
+			],
+"UserData" : {
+	"Fn::Base64" : {
+		"Fn::Join" : [
+			"",
+			[
+				"#!/bin/bash -ex\n",
+				"yum -y update\n",
+				"mkdir /home/ec2-user/.aws \n",
+				"cat > /home/ec2-user/.aws/config <<EOF\n",
+				"[default]\n",
+				"region = ", {
+					"Ref" : "AWS::Region"
+				}, "\n",
+				"EOF\n",
+				"chown -R ec2-user:ec2-user /home/ec2-user/.aws\n",
+				"cd /home/ec2-user\n",
+				"wget ", {
+					"Ref" : "LabUrlPrefix"
+				}, "/lab-4-codedeploy/static/CodeDeployTrustRole.txt\n",
+				"chmod +r CodeDeployTrustRole.txt\n",
+				"cat > /home/ec2-user/CodeDeployTrustPolicy.txt <<CDTP\n",
+				"{\n",
+				"\"Version\": \"2008-10-17\",\n",
+				"  \"Statement\": [\n",
+				"  {\n",
+				"    \"Sid\": \"1\",\n",
+				"    \"Effect\": \"Allow\",\n",
+				"    \"Principal\": {\n",
+				"        \"Service\": [\n",
+				"          \"codedeploy.", {
+					"Ref" : "AWS::Region"
+					}, ".amazonaws.com\"\n",
+				"        ]\n",
+				"    },\n",
+				"    \"Action\": \"sts:AssumeRole\"\n",
+				"  }]\n",
+				"}\n",
+				"CDTP\n",
+				"chmod +r CodeDeployTrustPolicy.txt\n",
+				"wget ", {
+					"Ref" : "LabUrlPrefix"
+				}, "/lab-4-codedeploy/static/EC2InstancePolicy.txt\n",
+				"chmod +r EC2InstancePolicy.txt\n",
+				"wget ", {
+					"Ref" : "LabUrlPrefix"
+				}, "/lab-4-codedeploy/static/EC2Trust.txt\n",
+				"chmod +r EC2Trust.txt\n",
+				"wget ", {
+					"Ref" : "LabUrlPrefix"
+				}, "/lab-4-codedeploy/static/ec2-info.zip\n",
+				"chmod +r ec2-info.zip\n",
+				"wget ", {
+					"Ref" : "LabUrlPrefix"
+				}, "/lab-4-codedeploy/static/create-roles.sh\n",
+				"chmod +x create-roles.sh\n",
+				"chown -R ec2-user:ec2-user /home/ec2-user/*\n",
+				"/opt/aws/bin/cfn-signal -s true '", {
+					"Ref" : "WebServerWaitHandle01"
+				}, "'\n"
+			]
+		]
+	}
+			}
+		}
+	},
+	"CodeDeployInstanceWaitHandle" : {
+		"Type" : "AWS::CloudFormation::WaitConditionHandle",
+		"Properties" : {}
+	},
+	"CodeDeployInstanceWaitCondition" : {
+		"Type" : "AWS::CloudFormation::WaitCondition",
+		"DependsOn" : "CodeDeployInstance",
+		"Properties" : {
+			"Handle" : {
+				"Ref" : "CodeDeployInstanceWaitHandle"
+			},
+			"Timeout" : "1800"
+		}
+	},
+	"CodeDeployInstance" : {
+		"Type" : "AWS::EC2::Instance",
+		"DependsOn" : ["RootInstanceProfile", "DevPublicSubnet", "WebServerSecurityGroup", "DevAttachGateway"],
+		"Properties" : {
+			"KeyName" : {
+				"Ref" : "KeyName"
+			},
+			"IamInstanceProfile" : {
+				"Ref" : "RootInstanceProfile"
+			},
+			"ImageId" : {
+				"Fn::FindInMap" : [
+					"AmazonLinuxAMI", {
+						"Ref" : "AWS::Region"
+					},
+					"AMI"
+				]
+			},
+			"InstanceType" : "t2.medium",
+			"NetworkInterfaces" : [{
+					"DeviceIndex" : "0",
+					"AssociatePublicIpAddress" : "true",
+					"SubnetId" : {
+						"Ref" : "DevPublicSubnet"
+					},
+					"GroupSet" : [{
+							"Ref" : "WebServerSecurityGroup"
+						}
+					]
+				}
+			],
+			"Tags" : [{
+					"Key" : "Name",
+					"Value" : "CodeDeployInstance"
+				}, {
+					"Key" : "InstanceType",
+					"Value" : "Application"
+				}, {
+					"Key" : "DeploymentType",
+					"Value" : "Development"
+				}, {
+					"Key" : "CodeDeployConfigured",
+					"Value" : "Yes"
+				}
+			],
+			"UserData" : {
+				"Fn::Base64" : {
+					"Fn::Join" : [
+						"",
+						[
+							"#!/bin/bash -ex\n",
+							"yum -y update\n",
+							"cd /home/ec2-user\n",
+							"aws s3 cp s3://aws-codedeploy-", { "Ref" : "AWS::Region" }, "/latest/install .\n",
+							"chmod +x ./install\n",
+							"./install auto\n",
+							"/opt/aws/bin/cfn-signal -s true '", {
+								"Ref" : "CodeDeployInstanceWaitHandle"
+							}, "'\n"
+						]
+					]
+				}
+			}
+		}
+	},
+
+	"WindowsCommandHostWaitHandle01": {
+		"Type": "AWS::CloudFormation::WaitConditionHandle",
+		"Properties": {}
+	},
+	"WindowsCommandHostWaitCondition01": {
+		"Type": "AWS::CloudFormation::WaitCondition",
+		"DependsOn": "WindowsCommandHostInstance",
+		"Properties": {
+			"Handle": {
+				"Ref": "WindowsCommandHostWaitHandle01"
+			},
+			"Timeout": "1800"
+		}
+	},
+	"WindowsCommandHostSecurityGroup" : {
+		"Type" : "AWS::EC2::SecurityGroup",
+		"DependsOn": "DevAttachGateway",
+		"Properties" : {
+			"GroupDescription" : "Security Group for command host",
+			"VpcId" : {"Ref": "DevVPC"},
+			"Tags": [
+							{
+								"Key": "Name",
+								"Value": "BastionSecurityGroup"
+							},
+							{
+								"Key": "InstanceType",
+								"Value": "Infrastructure"
+							}
+						],
+			"SecurityGroupEgress": [
+						{
+									"IpProtocol": "tcp",
+									"FromPort": "0",
+									"ToPort": "65535",
+									"CidrIp": "0.0.0.0/0"
+							},
+							{
+									"IpProtocol": "udp",
+									"FromPort": "0",
+									"ToPort": "65535",
+									"CidrIp": "0.0.0.0/0"
+							}
+					],
+					"SecurityGroupIngress": [
+						{
+									"IpProtocol": "tcp",
+									"FromPort": "3389",
+									"ToPort": "3389",
+									"CidrIp": "0.0.0.0/0"
+									}
+								]
+				}
+			},
+	"WindowsCommandHostInstance" : {
+		"Type" : "AWS::EC2::Instance",
+		"DependsOn": ["RootInstanceProfile", "DevPublicSubnet", "WindowsCommandHostSecurityGroup", "DevAttachGateway"],
+		"Properties" : {
+			"KeyName" : {
+				"Ref" : "KeyName"
+			},
+			"IamInstanceProfile" : {
+				"Ref" : "RootInstanceProfile"
+			},
+			"ImageId" : {
+				"Ref" : "AWSAmiId"
+			},
+			"InstanceType" : "t2.medium",
+			"NetworkInterfaces": [
+					{
+							"DeviceIndex": "0",
+							"AssociatePublicIpAddress": "true",
+							"SubnetId": { "Ref": "DevPublicSubnet" },
+							"GroupSet": [{ "Ref": "WindowsCommandHostSecurityGroup" }]
+					}
+			],
+			"Tags" : [{
+					"Key" : "Name",
+					"Value" : "Windows Command Host (Development VPC)"
+				}
+			],
+			"UserData" : {
+				"Fn::Base64" : {
+					"Fn::Join" : [
+						"",
+						[
+							"<powershell>\n",
+							"Set-ExecutionPolicy Unrestricted -Force\n",
+							"# Download and install latest stable AWS CLI MSI for 64bit\n",
+							"New-Item -ItemType directory -Path 'C:\\temp', 'C:\\temp\\aws'\n",
+							"$webclient = New-Object System.Net.WebClient\n",
+							"$webclient.DownloadFile('https://s3.amazonaws.com/aws-cli/AWSCLI64.msi','C:\\temp\\aws\\AWSCLI64.msi')\n",
+							"Start-Process 'C:\\temp\\aws\\AWSCLI64.msi' -ArgumentList /qn -Wait\n",
+							"New-Item -ItemType directory -Path 'C:\\Users\\Administrator\\.aws'\n",
+							"$ConfigSet = @\"\r\n",
+							"[default]\r\n",
+							"region = ", {
+								"Ref" : "AWS::Region"
+							}, "\n",
+							"\"@\r\n",
+							"New-Item -ItemType file -Path 'C:\\Users\\Administrator\\.aws\\config' -Value $ConfigSet\n",
+							"# Download source files for using during lab\n",
+							"$webclient.DownloadFile('",
+							{
+								"Ref" : "LabUrlPrefix"
+							},
+							"/lab-4-codedeploy/static/EC2InstancePolicy.txt','C:\\temp\\EC2InstancePolicy.txt')\n",
+							"$webclient.DownloadFile('",
+							{
+								"Ref" : "LabUrlPrefix"
+							},
+							"/lab-4-codedeploy/static/EC2Trust.txt','C:\\temp\\EC2Trust.txt')\n",
+							"$webclient.DownloadFile('",
+							{
+								"Ref" : "LabUrlPrefix"
+							},
+							"/lab-4-codedeploy/static/CodeDeployTrustRole.txt','C:\\temp\\CodeDeployTrustRole.txt')\n",
+							"$cdTrustPolicy = @\"\r\n",
+							"{\r\n",
+							"\"Version\": \"2008-10-17\",\r\n",
+							"  \"Statement\": [\r\n",
+							"  {\r\n",
+							"    \"Sid\": \"1\",\r\n",
+							"    \"Effect\": \"Allow\",\r\n",
+							"    \"Principal\": {\r\n",
+							"        \"Service\": [\r\n",
+							"          \"codedeploy.", {
+								"Ref" : "AWS::Region"
+								}, ".amazonaws.com\"\r\n",
+							"        ]\r\n",
+							"    },\r\n",
+							"    \"Action\": \"sts:AssumeRole\"\r\n",
+							"  }]\r\n",
+							"}\r\n",
+							"\r\n",
+							"\"@\r\n",
+							"New-Item -ItemType file -Path 'C:\\temp\\CodeDeployTrustPolicy.txt' -Value $cdTrustPolicy\n",
+							"$webclient.DownloadFile('",
+							{
+								"Ref" : "LabUrlPrefix"
+							},
+							"/lab-4-codedeploy/static/create-roles.ps1','C:\\temp\\create-roles.ps1')\n",
+							"$webclient.DownloadFile('",
+							{
+								"Ref" : "LabUrlPrefix"
+							},
+							"/lab-4-codedeploy/static/netapp.zip','C:\\temp\\netapp.zip')\r\n",
+							"$shell_app = new-object -com shell.application\r\n",
+							"$zipfile = $shell_app.Namespace('c:\\temp\\netapp.zip')\r\n",
+							"$destination = $shell_app.Namespace('C:\\temp')\r\n",
+							"$destination.copyHere($zipfile.items())\r\n",
+							"cfn-signal.exe -s true '", {
+								"Ref" : "WindowsCommandHostWaitHandle01"
+							}, "'\n",
+							"</powershell>\n"
+						]
+					]
+				}
+			}
+		}
+	},
+	"WindowsWebServerSecurityGroup" : {
+		"Type" : "AWS::EC2::SecurityGroup",
+		"DependsOn" : "DevAttachGateway",
+		"Properties" : {
+			"GroupDescription" : "Security Group for Web server",
+			"VpcId" : {
+				"Ref" : "DevVPC"
+			},
+			"Tags" : [{
+					"Key" : "Name",
+					"Value" : "WebServerSecurityGroup"
+				}, {
+					"Key" : "InstanceType",
+					"Value" : "General"
+				}
+			],
+			"SecurityGroupEgress" : [{
+					"IpProtocol" : "tcp",
+					"FromPort" : "0",
+					"ToPort" : "65535",
+					"CidrIp" : "0.0.0.0/0"
+				}, {
+					"IpProtocol" : "udp",
+					"FromPort" : "0",
+					"ToPort" : "65535",
+					"CidrIp" : "0.0.0.0/0"
+				}
+			],
+			"SecurityGroupIngress" : [{
+					"IpProtocol" : "tcp",
+					"FromPort" : "3389",
+					"ToPort" : "3389",
+					"CidrIp" : "0.0.0.0/0"
+				}, {
+				"IpProtocol" : "tcp",
+				"FromPort" : "80",
+				"ToPort" : "80",
+				"CidrIp" : "0.0.0.0/0"
+			}
+			]
+	}
+},
+	"WindowsCodeDeployInstanceWaitHandle" : {
+		"Type" : "AWS::CloudFormation::WaitConditionHandle",
+		"Properties" : {}
+	},
+	"WindowsCodeDeployInstanceWaitCondition" : {
+		"Type" : "AWS::CloudFormation::WaitCondition",
+		"DependsOn" : "WindowsCodeDeployInstance",
+		"Properties" : {
+			"Handle" : {
+				"Ref" : "WindowsCodeDeployInstanceWaitHandle"
+			},
+			"Timeout" : "1800"
+		}
+	},
+	"WindowsCodeDeployInstance" : {
+		"Type" : "AWS::EC2::Instance",
+		"DependsOn": ["RootInstanceProfile", "DevPublicSubnet", "WebServerSecurityGroup", "DevAttachGateway"],
+		"Properties" : {
+			"KeyName" : {
+				"Ref" : "KeyName"
+			},
+			"IamInstanceProfile" : {
+				"Ref" : "RootInstanceProfile"
+			},
+			"ImageId" : {
+				"Ref" : "AWSAmiId"
+			},
+			"InstanceType" : "t2.medium",
+			"NetworkInterfaces": [
+					{
+							"DeviceIndex": "0",
+							"AssociatePublicIpAddress": "true",
+							"SubnetId": { "Ref": "DevPublicSubnet" },
+							"GroupSet": [{ "Ref": "WindowsWebServerSecurityGroup" }]
+					}
+			],
+			"Tags" : [{
+					"Key" : "Name",
+					"Value" : "Windows CodeDeploy Instance (Development VPC)"
+				}, {
+					"Key" : "InstanceType",
+					"Value" : "Application"
+				}, {
+					"Key" : "DeploymentType",
+					"Value" : "Development"
+				}, {
+					"Key" : "WindowsCodeDeployConfigured",
+					"Value" : "Yes"
+				}
+			],
+			"UserData" : {
+				"Fn::Base64" : {
+					"Fn::Join" : [
+						"",
+						[
+						"<powershell>\n",
+						"Set-ExecutionPolicy Unrestricted -Force\r\n",
+						"New-Item -ItemType directory -Path 'C:\\temp'\r\n",
+						"$webclient = New-Object System.Net.WebClient\r\n",
+						"$webclient.DownloadFile('http://aws-codedeploy-",
+						{
+							"Ref" : "AWS::Region"
+						},
+						".s3.amazonaws.com/latest/codedeploy-agent.msi', 'c:\\temp\\codedeploy-agent.msi')\r\n",
+						"Start-Process 'C:\\temp\\codedeploy-agent.msi' -ArgumentList /qn -Wait\r\n",
+						"write-host 'Start-Process on codedeploy agent succeeded'\r\n",
+						"cfn-signal.exe -s true '", {
+							"Ref" : "WindowsCodeDeployInstanceWaitHandle"
+						}, "'\r\n",
+						"</powershell>\r\n"
+
+						]
+					]
+				}
+			}
+		}
+	}
+},
+"Outputs" : {
+	"WindowsServerAmi" : {
+		"Description" : "The Windows Server AMI to use when launching the Auto Scaling template included as part of this lab.",
+		"Value" : {
+			"Ref" : "AWSAmiId"
+		}
+	},
+	"qwikLAB" : {
+		"Description" : "Outputs to be used by qwikLAB",
+		"Value" : {
+			"Fn::Join" : [
+				"",
+				[
+					"{",
+					"\"Connection\": \"ec2-user@", {
+						"Fn::GetAtt" : [
+							"CommandHost",
+							"PublicIp"
+						]
+					},
+					"\"}"
+				]
+			]
+		}
+	}
+}
+}

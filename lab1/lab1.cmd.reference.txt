@@ -1,0 +1,138 @@
+DevOps Engineering on AWS: Lab 1 - Configuring DevOps Roles on AWS - v1.1 (Linux)
+
+==================================================================================================================
+
+Using this command reference.
+
+==================================================================================================================
+
+
+1. Locate the section you need. Each section in this file matches a section in the lab instructions.
+
+2. Replace items in angle brackets - < > - with appropriate values. For example, in this command you would replace the value - <JobFlowID> - (including the angle brackets) with the parameter indicated in the lab instructions:
+
+elastic-mapreduce --list <JobFlowID>. You can also use find and replace to change bracketed parameters in bulk.
+
+3. Do NOT enable the Word Wrap feature in Windows Notepad or the text editor you use to view this file.
+
+
+++++1. Task: Restrict Developer Access to Production++++
+
+==================================================================================================================
+1.2 Create an Initial IAM Policy
+==================================================================================================================
+
+1.2.1 Copy the IAM policy
+
+{
+	"Version" : "2012-10-17",
+	"Statement" : [{
+			"Sid" : "Stmt1425065597000",
+			"Effect" : "Allow",
+			"Action" : [
+				"ec2:RunInstances"
+			],
+			"Resource" : "arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:subnet/*",
+			"Condition" : {
+				"StringEquals" : {
+					"ec2:Vpc" : "arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:vpc/<Lab1DevVPC>"
+				}
+			}
+		}, {
+			"Effect" : "Allow",
+			"Action" : "ec2:RunInstances",
+			"Resource" : [
+				"arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:instance/*",
+				"arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:volume/*",
+				"arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:network-interface/*",
+				"arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:key-pair/*",
+				"arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:security-group/*",
+				"arn:aws:ec2:<Lab1Region>::image/*"
+			]
+		}, {
+			"Effect" : "Allow",
+			"Action" : ["sts:DecodeAuthorizationMessage"],
+			"Resource" : "*"
+		}
+	]
+}
+
+
+==================================================================================================================
+1.6 Test Developer Permissions
+==================================================================================================================
+
+1.6.9 Test permissions from bastion command line
+
+aws ec2 run-instances --dry-run --instance-type "t2.small" --image-id <Lab1AMIID> --subnet-id <Lab1DevSubnetID>
+
+
+==================================================================================================================
+1.7 Debug IAM Permissions Issues
+==================================================================================================================
+
+1.7.1 Attempt to create an instance in the production VPC instead
+
+aws ec2 run-instances --dry-run --instance-type "t2.small" --image-id <Lab1AMIID> --subnet-id <Lab1ProdSubnetID>
+
+1.7.3 Decode the failure message
+
+aws sts decode-authorization-message --encoded-message <FailureMessage>
+
+1.7.4 Pretty-print the decoded authorization message
+
+aws sts decode-authorization-message --encoded-message <FailureMessage> --query 'DecodedMessage' | sed -e 's/\\"/"/g' -e 's/"{/{/g' -e 's/}"/}/g' | python -m json.tool
+
+
+++++2. Challenge: Deny Permissions to Infrastructure Instances++++
+
+==================================================================================================================
+2.1 Grant Additional Permissions on Instances in Developer VPC
+==================================================================================================================
+
+2.1.5 Paste Allow statements into existing IAM policy
+
+,
+	 {
+			"Effect" : "Allow",
+			"Action" : [
+				"ec2:StartInstances",
+				"ec2:StopInstances",
+				"ec2:TerminateInstances"
+			],
+			"Resource" : [
+				"arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:instance/*"
+			],
+			"Condition" : {
+				"StringEquals" : {
+						"ec2:ResourceTag/DeploymentType" : "Development"
+				}
+			}
+		},
+	 {
+			"Effect" : "Deny",
+			"Action" : [
+				"ec2:StartInstances",
+				"ec2:StopInstances",
+				"ec2:TerminateInstances"
+			],
+			"Resource" : [
+				"arn:aws:ec2:<Lab1Region>:<Lab1AccountID>:instance/*"
+			],
+			"Condition" : {
+				"StringEquals" : {
+						"ec2:ResourceTag/InstanceType" : "Infrastructure"
+				}
+			}
+		}
+
+2.1.7 Attempt to stop the NAT instance in Production VPC
+
+aws ec2 stop-instances --instance-id <Lab1ProdNATID>
+
+2.1.8 Attempt to stop the NAT instance in Development VPC
+
+aws ec2 stop-instances --instance-id <Lab1DevNATID>
+
+
+Â© 2015 Amazon Web Services, Inc. or its affiliates. All rights reserved.

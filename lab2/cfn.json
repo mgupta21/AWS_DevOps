@@ -1,0 +1,588 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DevOps Engineering on AWS v1.1 Lab 2 - Infrastructure as Code",
+  "Parameters": {
+    "DevVPCCIDR": {
+      "Description": "CIDR Block for Developer VPC",
+      "Type": "String",
+      "Default": "10.0.0.0/16",
+      "AllowedValues": [
+        "10.0.0.0/16"
+      ]
+    },
+    "DevPublicSubnetCIDR": {
+      "Description": "DevEnv Public Subnet",
+      "Type": "String",
+      "Default": "10.0.10.0/24",
+      "AllowedValues": [
+        "10.0.10.0/24"
+      ]
+    },
+    "AWSAccessKey": {
+      "Description": "Access key for our lab user.",
+      "Type": "String"
+    },
+    "AWSAccessKey2RemoveMe": {
+      "Description": "Access key for our lab user.",
+      "Type": "String",
+      "Default" :  "Hello"
+    },
+    "AWSSecretAccessKey": {
+      "Description": "Secret access key for our lab user.",
+      "Type": "String"
+    },
+    "KeyName": {
+      "Type": "String",
+      "Description": "Keyname for the keypair that Qwiklab will use to launch EC2 instances",
+      "Default": "default-lab-key"
+    },
+    "LabUrlPrefix": {
+      "Type": "String",
+      "Default": "https://d2lrzjb0vjvpn5.cloudfront.net/devops/v1.1"
+    },
+		"AWSAmiId" : {
+			"Description" : "The name of the Windows AMI to find based on search",
+			"Type" : "String",
+			"Default" : "x86_64,Windows_Server-2012-R2_RTM-English-64Bit-Base"
+		}
+  },
+  "Mappings": {
+    "AmazonLinuxAMI": {
+      "us-east-1": {
+        "AMI": "ami-1ecae776"
+      },
+      "us-west-1": {
+        "AMI": "ami-d114f295"
+      },
+      "us-west-2": {
+        "AMI": "ami-e7527ed7"
+      },
+      "eu-west-1": {
+        "AMI": "ami-a10897d6"
+      },
+      "eu-central-1": {
+        "AMI": "ami-a8221fb5"
+      },
+      "sa-east-1": {
+        "AMI": "ami-b52890a8"
+      },
+      "ap-southeast-1": {
+        "AMI": "ami-68d8e93a"
+      },
+      "ap-southeast-2": {
+        "AMI": "ami-fd9cecc7"
+      },
+      "ap-northeast-1": {
+        "AMI": "ami-cbf90ecb"
+      }
+    }
+  },
+  "Resources": {
+    "DevVPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": {
+          "Ref": "DevVPCCIDR"
+        },
+        "EnableDnsSupport": "true",
+        "EnableDnsHostnames": "true",
+        "Tags": [
+          {
+            "Key": "VPC",
+            "Value": "Development VPC"
+          },
+          {
+            "Key": "Name",
+            "Value": "Development VPC"
+          }
+        ]
+      }
+    },
+    "DevInternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "DependsOn": "DevVPC"
+    },
+    "DevAttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "DependsOn": [
+        "DevVPC",
+        "DevInternetGateway"
+      ],
+      "Properties": {
+        "VpcId": {
+          "Ref": "DevVPC"
+        },
+        "InternetGatewayId": {
+          "Ref": "DevInternetGateway"
+        }
+      }
+    },
+    "DevPublicSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "DependsOn": "DevAttachGateway",
+      "Properties": {
+        "VpcId": {
+          "Ref": "DevVPC"
+        },
+        "CidrBlock": {
+          "Ref": "DevPublicSubnetCIDR"
+        },
+        "AvailabilityZone": {
+          "Fn::Select": [
+            "0",
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Dev Public Subnet"
+          }
+        ]
+      }
+    },
+    "DevPublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "DependsOn": [
+        "DevVPC",
+        "DevAttachGateway"
+      ],
+      "Properties": {
+        "VpcId": {
+          "Ref": "DevVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Dev Public Route Table"
+          }
+        ]
+      }
+    },
+    "DevPublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": [
+        "DevPublicRouteTable",
+        "DevAttachGateway"
+      ],
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "DevPublicRouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "DevInternetGateway"
+        }
+      }
+    },
+    "DevPublicSubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "DependsOn": [
+        "DevPublicRouteTable",
+        "DevPublicSubnet",
+        "DevAttachGateway"
+      ],
+      "Properties": {
+        "SubnetId": {
+          "Ref": "DevPublicSubnet"
+        },
+        "RouteTableId": {
+          "Ref": "DevPublicRouteTable"
+        }
+      }
+    },
+    "AWSLambdaDevInstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "DependsOn": "DevAttachGateway",
+      "Properties": {
+        "GroupDescription": "Security Group for Web server",
+        "VpcId": {
+          "Ref": "DevVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "AWSLambdaDevInstanceSecurityGroup"
+          },
+          {
+            "Key": "InstanceType",
+            "Value": "General"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "udp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "LambdaWaitHandle01": {
+      "Type": "AWS::CloudFormation::WaitConditionHandle",
+      "Properties": {}
+    },
+    "LambdaWaitCondition01": {
+      "Type": "AWS::CloudFormation::WaitCondition",
+      "DependsOn": "AWSLambdaDevInstance",
+      "Properties": {
+        "Handle": {
+          "Ref": "LambdaWaitHandle01"
+        },
+        "Timeout": "1800"
+      }
+    },
+    "AWSLambdaDevInstance": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "DevPublicSubnet",
+        "AWSLambdaDevInstanceSecurityGroup",
+        "DevAttachGateway"
+      ],
+      "Properties": {
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "ImageId": {
+          "Fn::FindInMap": [
+            "AmazonLinuxAMI",
+            {
+              "Ref": "AWS::Region"
+            },
+            "AMI"
+          ]
+        },
+        "InstanceType": "t2.small",
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": "true",
+            "SubnetId": {
+              "Ref": "DevPublicSubnet"
+            },
+            "GroupSet": [
+              {
+                "Ref": "AWSLambdaDevInstanceSecurityGroup"
+              }
+            ]
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "AWS Lambda Dev Server - Linux"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -ex \n",
+                "yum -y update \n",
+                "mkdir /home/ec2-user/.aws \n",
+                "cat > /home/ec2-user/.aws/config <<EOF\n",
+                "[default]\n",
+                "region = ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\nEOF\n",
+                "cat > /home/ec2-user/.aws/credentials <<CREDEOF\n",
+                "[default]\n",
+                "aws_access_key_id=",
+                {
+                  "Ref": "AWSAccessKey"
+                },
+                "\n",
+                "aws_secret_access_key=",
+                {
+                  "Ref": "AWSSecretAccessKey"
+                },
+                "\nCREDEOF\n",
+								"cd /home/ec2-user\n",
+								"wget ", {
+									"Ref" : "LabUrlPrefix"
+								}, "/lab-2-iac/static/cfnverifierlambda.zip\n",
+								"unzip cfnverifierlambda.zip\n",
+								"cat > /home/ec2-user/cfnverifierlambda/lambda-trust-rel.json <<LTR1\n",
+								"{\n",
+								  "\"Version\": \"2012-10-17\",\n",
+								  "\"Statement\": [\n",
+								    "{\n",
+								      "\"Sid\": \"\",\n",
+								      "\"Effect\": \"Allow\",\n",
+								      "\"Principal\": {\n",
+								        "\"Service\": \"lambda.amazonaws.com\"\n",
+								      "},\n",
+								      "\"Action\": \"sts:AssumeRole\"\n",
+								    "},\n",
+										"{\n",
+      								"\"Sid\": \"\",\n",
+      								"\"Effect\": \"Allow\",\n",
+      								"\"Principal\": {\n",
+        								"\"AWS\": \"arn:aws:iam::", {
+														"Ref" : "AWS::AccountId"
+													}, ":user/awsstudent\"\n",
+      								"},\n",
+      								"\"Action\": \"sts:AssumeRole\"\n",
+    									"}\n",
+								  "]\n",
+								"}\n",
+								"LTR1\n",
+								"cd cfnverifierlambda\n",
+								"yum install -y nodejs npm --enablerepo=epel\n",
+								"chown -R ec2-user /home/ec2-user/cfnverifierlambda\n",
+                "/opt/aws/bin/cfn-signal -s true '",
+                {
+                  "Ref": "LambdaWaitHandle01"
+                },
+                "'\n"
+              ]
+            ]
+          }
+        }
+      }
+    },
+		"LambdaWindowsWaitHandle01": {
+			"Type": "AWS::CloudFormation::WaitConditionHandle",
+			"Properties": {}
+		},
+		"LambdaWindowsWaitCondition01": {
+			"Type": "AWS::CloudFormation::WaitCondition",
+			"DependsOn": "AWSLambdaDevInstanceWindows",
+			"Properties": {
+				"Handle": {
+					"Ref": "LambdaWindowsWaitHandle01"
+				},
+				"Timeout": "3600"
+			}
+		},
+		"AWSLambdaWindowsDevInstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "DependsOn": "DevAttachGateway",
+      "Properties": {
+        "GroupDescription": "Security Group for Web server",
+        "VpcId": {
+          "Ref": "DevVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "AWSLambdaDevInstanceSecurityGroup"
+          },
+          {
+            "Key": "InstanceType",
+            "Value": "General"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "udp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "3389",
+            "ToPort": "3389",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+		"AWSLambdaDevInstanceWindows": {
+			"Type": "AWS::EC2::Instance",
+			"DependsOn": [
+				"DevVPC",
+				"DevAttachGateway",
+				"AWSLambdaWindowsDevInstanceSecurityGroup",
+				"DevPublicRoute"
+			],
+			"Properties": {
+				"KeyName": {
+					"Ref": "KeyName"
+				},
+				"ImageId": {
+					"Ref": "AWSAmiId"
+				},
+				"BlockDeviceMappings": [
+					{
+						"DeviceName": "/dev/sda1",
+						"Ebs": {
+							"VolumeSize": "60",
+							"VolumeType": "gp2"
+						}
+					}
+				],
+				"InstanceType": "m3.large",
+				"NetworkInterfaces": [
+					{
+						"DeviceIndex": "0",
+						"AssociatePublicIpAddress": "true",
+						"SubnetId": {
+							"Ref": "DevPublicSubnet"
+						},
+						"GroupSet": [
+							{
+								"Ref": "AWSLambdaWindowsDevInstanceSecurityGroup"
+							}
+						]
+					}
+				],
+				"Tags": [
+					{
+						"Key": "Name",
+						"Value": "AWS Lambda Dev Server - Windows"
+					}
+				],
+				"UserData": {
+					"Fn::Base64": {
+						"Fn::Join": [
+							"",
+							[
+								"<powershell>\n",
+                "$success = \"true\"\n",
+                "$message = 'Lab configuration succeeded.'\n",
+                "try {\n",
+								"New-Item -ItemType directory -Path 'C:\\temp', 'C:\\temp\\aws'\n",
+								"$webclient = New-Object System.Net.WebClient\n",
+								"$webclient.DownloadFile('https://s3.amazonaws.com/aws-cli/AWSCLI64.msi','C:\\temp\\aws\\AWSCLI64.msi')\n",
+								"Start-Process 'C:\\temp\\aws\\AWSCLI64.msi' -ArgumentList /qn -Wait\n",
+								"$env:Path = $env:Path + \";C:\\Program Files\\Amazon\\AWSCLI\\\"\n",
+								"New-Item -ItemType directory -Path 'C:\\Users\\Administrator\\.aws'\n",
+								"$ConfigSet = @\"\r\n",
+								"[default]\r\n",
+								"region = ",
+								{
+									"Ref": "AWS::Region"
+								},
+								"\r\n",
+								"\"@\r\n",
+								"New-Item -ItemType file -Path 'C:\\Users\\Administrator\\.aws\\config' -Value $ConfigSet\n",
+								"$Credentials = @\"\r\n",
+                "[default]\r\n",
+                "aws_access_key_id=",
+                {
+                  "Ref": "AWSAccessKey"
+                },
+                "\r\n",
+                "aws_secret_access_key=",
+                {
+                  "Ref": "AWSSecretAccessKey"
+                },
+								"\r\n",
+								"\"@\r\n",
+								"New-Item -ItemType file -Path 'C:\\Users\\Administrator\\.aws\\credentials' -Value $Credentials\n",
+                "$webclient = New-Object System.Net.WebClient\n",
+                "$webclient.DownloadFile('", {
+									"Ref" : "LabUrlPrefix"
+								}, "/lab-2-iac/static/node-v0.12.7-x86.msi','C:\\temp\\aws\\node-v0.12.7-x86.msi')\n",
+                "Start-Process 'C:\\temp\\aws\\node-v0.12.7-x86.msi' -ArgumentList /qn -Wait\n",
+                "$webclient = New-Object System.Net.WebClient\n",
+                "$webclient.DownloadFile('", {
+									"Ref" : "LabUrlPrefix"
+								}, "/lab-2-iac/nov/AtomSetup.exe','C:\\temp\\aws\\AtomSetup.exe')\n",
+                "# TODO: Unattended install hangs. Investigate a solution in the next version.\n",
+                "# Start-Process 'C:\\temp\\aws\\AtomSetup.exe' -Wait\n",
+                "$webclient = New-Object System.Net.WebClient\n",
+								"$webclient.DownloadFile('", {
+									"Ref" : "LabUrlPrefix"
+								}, "/lab-2-iac/static/cfnverifierlambda.zip','C:\\temp\\cfnverifierlambda.zip')\n",
+								"$shell = new-object -com shell.application\n",
+								"$zip = $shell.NameSpace(\"C:\\temp\\cfnverifierlambda.zip\")\n",
+								"foreach($item in $zip.items())\n",
+								"{$shell.Namespace(\"C:\\temp\").copyhere($item)}\n",
+								"$LambdaTrustPolicy = @\"\r\n",
+								"{\r\n",
+								  "\"Version\": \"2012-10-17\",\r\n",
+								  "\"Statement\": [\r\n",
+								    "{\r\n",
+								      "\"Sid\": \"\",\r\n",
+								      "\"Effect\": \"Allow\",\r\n",
+								      "\"Principal\": {\r\n",
+								        "\"Service\": \"lambda.amazonaws.com\"\r\n",
+								      "},\n",
+								      "\"Action\": \"sts:AssumeRole\"\r\n",
+								    "},\r\n",
+										"{\r\n",
+      								"\"Sid\": \"\",\r\n",
+      								"\"Effect\": \"Allow\",\r\n",
+      								"\"Principal\": {\r\n",
+        								"\"AWS\": \"arn:aws:iam::", {
+														"Ref" : "AWS::AccountId"
+													}, ":user/awsstudent\"\r\n",
+      								"},\r\n",
+      								"\"Action\": \"sts:AssumeRole\"\r\n",
+    									"}\r\n",
+								  "]\r\n",
+								"}\r\n",
+								"\r\n",
+								"\"@\r\n",
+								"New-Item -ItemType file -Path 'C:\\temp\\cfnverifierlambda\\lambda-trust-rel.json' -Value $LambdaTrustPolicy\n",
+                "} catch {\n",
+                  "$success=\"false\"\n",
+                  "$message=$_.Exception\n",
+                "}\n",
+								"cfn-signal.exe -s $success '",
+								{
+									"Ref": "LambdaWindowsWaitHandle01"
+								},
+								"' -r $message\n",
+                "restart-computer -force\n",
+								"</powershell>"
+							]
+						]
+					}
+				}
+			}
+		}
+  },
+  "Outputs": {
+    "qwikLAB": {
+      "Description": "Outputs to be used by qwikLAB",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "{",
+            "\"Connection\": \"ssh ec2-user@",
+            {
+              "Fn::GetAtt": [
+                "AWSLambdaDevInstance",
+                "PublicIp"
+              ]
+            },
+            "\"}"
+          ]
+        ]
+      }
+    }
+  }
+}

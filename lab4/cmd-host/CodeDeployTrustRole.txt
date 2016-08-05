@@ -1,0 +1,21 @@
+{
+    "Statement": [
+        {
+            "Resource": [ "*" ],
+            "Action": ["ec2:Describe*"],
+            "Effect": "Allow"
+        },
+        {
+            "Resource": ["*"],
+            "Action": [
+                "autoscaling:CompleteLifecycleAction",
+                "autoscaling:DeleteLifecycleHook",
+                "autoscaling:DescribeLifecycleHooks",
+                "autoscaling:DescribeAutoScalingGroups",
+                "autoscaling:PutLifecycleHook",
+                "autoscaling:RecordLifecycleActionHeartbeat"
+            ],
+            "Effect": "Allow"
+        }
+    ]
+}

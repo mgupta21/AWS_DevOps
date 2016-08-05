@@ -1,0 +1,1084 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DevOps Engineering on AWS v1.1 Lab 3 - Continuous Integration",
+  "Parameters": {
+    "DEVVPCCIDR": {
+      "Description": "CIDR Block for Developer VPC",
+      "Type": "String",
+      "Default": "10.1.0.0/16",
+      "AllowedValues": [
+        "10.1.0.0/16"
+      ]
+    },
+    "KeyName": {
+      "Type": "String",
+      "Description": "Keyname for the keypair that Qwiklab will use to launch EC2 instances",
+      "Default": "default-lab-key"
+    },
+    "DEVPublicSubnetCIDR": {
+      "Description": "DEVEnv Public Subnet",
+      "Type": "String",
+      "Default": "10.1.10.0/24",
+      "AllowedValues": [
+        "10.1.10.0/24"
+      ]
+    },
+    "LabUrlPrefix": {
+      "Type": "String",
+      "Default": "https://d2lrzjb0vjvpn5.cloudfront.net/devops/v1.1"
+    }
+  },
+  "Mappings": {
+    "AmazonLinuxAMI": {
+      "us-east-1": {
+        "AMI": "ami-1ecae776"
+      },
+      "us-west-1": {
+        "AMI": "ami-d114f295"
+      },
+      "us-west-2": {
+        "AMI": "ami-e7527ed7"
+      },
+      "eu-west-1": {
+        "AMI": "ami-a10897d6"
+      },
+      "eu-central-1": {
+        "AMI": "ami-a8221fb5"
+      },
+      "sa-east-1": {
+        "AMI": "ami-b52890a8"
+      },
+      "ap-southeast-1": {
+        "AMI": "ami-68d8e93a"
+      },
+      "ap-southeast-2": {
+        "AMI": "ami-fd9cecc7"
+      },
+      "ap-northeast-1": {
+        "AMI": "ami-cbf90ecb"
+      }
+    }
+  },
+  "Resources": {
+    "DEVVPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": {
+          "Ref": "DEVVPCCIDR"
+        },
+        "EnableDnsSupport": "true",
+        "EnableDnsHostnames": "true",
+        "Tags": [
+          {
+            "Key": "VPC",
+            "Value": "DEV VPC"
+          },
+          {
+            "Key": "Name",
+            "Value": "DEV VPC"
+          }
+        ]
+      }
+    },
+    "DEVInternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "DependsOn": "DEVVPC"
+    },
+    "DEVAttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "DependsOn": [
+        "DEVVPC",
+        "DEVInternetGateway"
+      ],
+      "Properties": {
+        "VpcId": {
+          "Ref": "DEVVPC"
+        },
+        "InternetGatewayId": {
+          "Ref": "DEVInternetGateway"
+        }
+      }
+    },
+    "DEVPublicSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "DependsOn": "DEVAttachGateway",
+      "Properties": {
+        "VpcId": {
+          "Ref": "DEVVPC"
+        },
+        "CidrBlock": {
+          "Ref": "DEVPublicSubnetCIDR"
+        },
+        "AvailabilityZone": {
+          "Fn::Select": [
+            "0",
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "DEV Public Subnet"
+          }
+        ]
+      }
+    },
+    "DEVPublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "DependsOn": [
+        "DEVVPC",
+        "DEVAttachGateway"
+      ],
+      "Properties": {
+        "VpcId": {
+          "Ref": "DEVVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "DEV Public Route Table"
+          }
+        ]
+      }
+    },
+    "DEVPublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": [
+        "DEVPublicRouteTable",
+        "DEVAttachGateway"
+      ],
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "DEVPublicRouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "DEVInternetGateway"
+        }
+      }
+    },
+    "DEVPublicSubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "DependsOn": [
+        "DEVPublicRouteTable",
+        "DEVPublicSubnet",
+        "DEVAttachGateway"
+      ],
+      "Properties": {
+        "SubnetId": {
+          "Ref": "DEVPublicSubnet"
+        },
+        "RouteTableId": {
+          "Ref": "DEVPublicRouteTable"
+        }
+      }
+    },
+    "WebInstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "DependsOn": "DEVAttachGateway",
+      "Properties": {
+        "GroupDescription": "Security Group for Web Instance",
+        "VpcId": {
+          "Ref": "DEVVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "WebInstanceSecurityGroup"
+          },
+          {
+            "Key": "DeploymentType",
+            "Value": "Development"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "udp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "CIInstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "DependsOn": "DEVAttachGateway",
+      "Properties": {
+        "GroupDescription": "Security Group for Continuous Integration Instance",
+        "VpcId": {
+          "Ref": "DEVVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "CIInstanceSecurityGroup"
+          },
+          {
+            "Key": "DeploymentType",
+            "Value": "Development"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "udp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "CommandHostSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "DependsOn": "DEVAttachGateway",
+      "Properties": {
+        "GroupDescription": "Security Group for Operations instance",
+        "VpcId": {
+          "Ref": "DEVVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "CIInstanceSecurityGroup"
+          },
+          {
+            "Key": "DeploymentType",
+            "Value": "Development"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "udp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "GitInstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "DependsOn": "DEVAttachGateway",
+      "Properties": {
+        "GroupDescription": "Security Group for Git instance",
+        "VpcId": {
+          "Ref": "DEVVPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "GitInstanceSecurityGroup"
+          },
+          {
+            "Key": "DeploymentType",
+            "Value": "Development"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "udp",
+            "FromPort": "0",
+            "ToPort": "65535",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "WebInstanceEC2InstanceProfile": {
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          {
+            "Ref": "WebInstanceEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::InstanceProfile"
+    },
+    "WebInstanceEC2TrustAccessRole": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              }
+            }
+          ]
+        },
+        "Path": "/"
+      },
+      "Type": "AWS::IAM::Role"
+    },
+    "WebInstanceInstancePolicy": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:get*",
+                "s3:list*"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ]
+        },
+        "PolicyName": "WebInstanceS3Access",
+        "Roles": [
+          {
+            "Ref": "WebInstanceEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Policy"
+    },
+    "GitInstanceEC2InstanceProfile": {
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          {
+            "Ref": "GitInstanceEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::InstanceProfile"
+    },
+    "GitInstanceEC2TrustAccessRole": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              }
+            }
+          ]
+        },
+        "Path": "/"
+      },
+      "Type": "AWS::IAM::Role"
+    },
+    "GitInstanceInstancePolicy": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:get*",
+                "s3:list*"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ]
+        },
+        "PolicyName": "GitInstanceS3Access",
+        "Roles": [
+          {
+            "Ref": "GitInstanceEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Policy"
+    },
+    "CommandHostEC2InstanceProfile": {
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          {
+            "Ref": "CommandHostEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::InstanceProfile"
+    },
+    "CommandHostEC2TrustAccessRole": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              }
+            }
+          ]
+        },
+        "Path": "/"
+      },
+      "Type": "AWS::IAM::Role"
+    },
+    "CommandHostInstancePolicy": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:get*",
+                "s3:list*",
+                "s3:put*"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ]
+        },
+        "PolicyName": "CommandHostS3Access",
+        "Roles": [
+          {
+            "Ref": "CommandHostEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Policy"
+    },
+    "CIInstanceEC2InstanceProfile": {
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          {
+            "Ref": "CIInstanceEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::InstanceProfile"
+    },
+    "CIInstanceEC2TrustAccessRole": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              }
+            }
+          ]
+        },
+        "Path": "/"
+      },
+      "Type": "AWS::IAM::Role"
+    },
+    "CIInstancePolicy": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "ec2:*",
+                "logs:*",
+                "cloudformation:*",
+                "s3:*",
+                "iam:PassRole",
+                "iam:ListInstanceProfiles"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ]
+        },
+        "PolicyName": "CIInstance_RestrictedAccess",
+        "Roles": [
+          {
+            "Ref": "CIInstanceEC2TrustAccessRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Policy"
+    },
+    "CIInstanceWaitHandle01": {
+      "Type": "AWS::CloudFormation::WaitConditionHandle",
+      "Properties": {}
+    },
+    "CIInstanceWaitCondition01": {
+      "Type": "AWS::CloudFormation::WaitCondition",
+      "DependsOn": "CIInstance",
+      "Properties": {
+        "Handle": {
+          "Ref": "CIInstanceWaitHandle01"
+        },
+        "Timeout": "1800"
+      }
+    },
+    "GitInstanceWaitHandle01": {
+      "Type": "AWS::CloudFormation::WaitConditionHandle",
+      "Properties": {}
+    },
+    "GitInstanceWaitCondition01": {
+      "Type": "AWS::CloudFormation::WaitCondition",
+      "DependsOn": "GitInstance",
+      "Properties": {
+        "Handle": {
+          "Ref": "GitInstanceWaitHandle01"
+        },
+        "Timeout": "1800"
+      }
+    },
+    "CommandHostWaitHandle01": {
+      "Type": "AWS::CloudFormation::WaitConditionHandle",
+      "Properties": {}
+    },
+    "CommandHostWaitCondition01": {
+      "Type": "AWS::CloudFormation::WaitCondition",
+      "DependsOn": "CommandHost",
+      "Properties": {
+        "Handle": {
+          "Ref": "CommandHostWaitHandle01"
+        },
+        "Timeout": "1800"
+      }
+    },
+    "s3ArtifactBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+      }
+    },
+    "CIInstance": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "DEVPublicSubnet",
+        "CIInstanceSecurityGroup",
+        "DEVAttachGateway",
+        "s3ArtifactBucket"
+      ],
+      "Properties": {
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "IamInstanceProfile": {
+          "Ref": "CIInstanceEC2InstanceProfile"
+        },
+        "ImageId": {
+          "Fn::FindInMap": [
+            "AmazonLinuxAMI",
+            {
+              "Ref": "AWS::Region"
+            },
+            "AMI"
+          ]
+        },
+        "InstanceType": "t2.medium",
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": "true",
+            "SubnetId": {
+              "Ref": "DEVPublicSubnet"
+            },
+            "GroupSet": [
+              {
+                "Ref": "CIInstanceSecurityGroup"
+              }
+            ]
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "CI-Instance"
+          },
+          {
+            "Key": "DeploymentType",
+            "Value": "Development"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -x\n",
+                "yum update -y\n",
+
+                "#Install Git and CloudWatch Logs\n",
+                "yum install -y git awslogs php\n",
+                "sleep 30\n",
+                "#Set up environment variables\n",
+                "export REGION=",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "export AMI_ID=",
+                {
+                  "Fn::FindInMap": [
+                    "AmazonLinuxAMI",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    "AMI"
+                  ]
+                },
+                "\n",
+                "export SG_ID=",
+                {
+                  "Ref": "CIInstanceSecurityGroup"
+                },
+                "\n",
+                "export SUBNET_ID=",
+                {
+                  "Ref": "DEVPublicSubnet"
+                },
+                "\n",
+                "export KEYNAME=",
+                {
+                  "Ref": "KeyName"
+                },
+                "\n",
+                "export S3BUCKET=",
+                {
+                  "Ref": "s3ArtifactBucket"
+                },
+                "\n",
+                "export WEBInstanceROLE=",
+                {
+                  "Ref": "WebInstanceEC2InstanceProfile"
+                },
+                "\n",
+                "#Setup port forwarding with iptables\n",
+                "iptables -I INPUT 1 -p tcp --dport 8443 -j ACCEPT\n",
+                "iptables -I INPUT 1 -p tcp --dport 8080 -j ACCEPT\n",
+                "iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT\n",
+                "iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT\n",
+                "iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080\n",
+                "iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443\n",
+                "mkdir /home/ec2-user/setup\n",
+                "#####################################################################################################################\n",
+                "wget -O /home/ec2-user/setup/setAWSlogs.sh ",
+                {
+                  "Ref": "LabUrlPrefix"
+                },
+                "/lab-3-ci/static/lab-3-ci-logs.sh\n",
+                "wget -O /home/ec2-user/setup/lab-3-ci-job-script.sh ",
+                {
+                  "Ref": "LabUrlPrefix"
+                },
+                "/lab-3-ci/static/lab-3-ci-job-script.sh\n",
+                "wget -O /home/ec2-user/setup/lab-3-ci-simple-test.sh ",
+                {
+                  "Ref": "LabUrlPrefix"
+                },
+                "/lab-3-ci/static/lab-3-ci-simple-test.sh\n",
+                "#####################################################################################################################\n",
+                "chmod +x /home/ec2-user/setup/*.sh && /home/ec2-user/setup/setAWSlogs.sh\n",
+                "# Update suders file to not require a TTY for sudo.\n",
+                "sed -i 's/^Defaults    requiretty/#&/' /etc/sudoers\n",
+                "mkdir /home/ec2-user/.aws \n",
+                "cat > /home/ec2-user/.aws/config <<EOF\n",
+                "[default]\n",
+                "region = ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "EOF\n",
+                "chown -R ec2-user:ec2-user /home/ec2-user/.aws\n",
+                "sed -i \"s/us-east-1/$REGION/g\" /etc/awslogs/awscli.conf\n",
+                "sleep 3 && service awslogs start\n",
+                "#Installing Jenkins \n",
+                "wget -O /etc/yum.repos.d/jenkins.repo ",
+                {
+                  "Ref": "LabUrlPrefix"
+                },
+                "/lab-3-ci/static/jenkins.repo\n",
+                "rpm --import http://pkg.jenkins-ci.org/redhat-stable/jenkins-ci.org.key\n",
+                "sleep 5 && yum install -y jenkins\n",
+                "chkconfig jenkins on && chkconfig awslogs on\n",
+                "# Start jenkins, pause for a few, then install plugins\n",
+                "service jenkins start && sleep 30\n",
+                "# Generate SSH key for Jenkins - Git integration\n",
+                "ssh-keygen -b 2048 -t rsa -f /home/ec2-user/.ssh/id_rsa -q -N '' && chown -R ec2-user:ec2-user /home/ec2-user\n",
+                "mkdir /var/lib/jenkins/.ssh && cp /home/ec2-user/.ssh/id_rsa /var/lib/jenkins/.ssh/id_rsa\n",
+                "aws s3 cp /home/ec2-user/.ssh/id_rsa.pub s3://$S3BUCKET/keys/jenkins-id_rsa.pub --region ",
+                {
+                  "Ref": "AWS::Region"
+                }, "\n",
+                "# Jenkins: Install plugs and set up environment\n",
+                "cd /var/lib/jenkins && wget http://localhost:8080/jnlpJars/jenkins-cli.jar && mkdir tmp\n",
+                "echo \"export KEYNAME=$KEYNAME\" >> /var/lib/jenkins/.env_config\n",
+                "echo \"export ARTIFACT_BUCKET=$S3BUCKET\" >> /var/lib/jenkins/.env_config\n",
+                "echo \"export REGION=$REGION\" >> /var/lib/jenkins/.env_config\n",
+                "echo \"export WEBInstanceROLE=$WEBInstanceROLE\" >> /var/lib/jenkins/.env_config\n",
+                "mkdir /var/lib/jenkins/script && cp /home/ec2-user/setup/lab-3-ci-job-script.sh /var/lib/jenkins/script/test-build-deploy.sh\n",
+		            "cp /home/ec2-user/setup/lab-3-ci-simple-test.sh /var/lib/jenkins/script/simple-test.sh\n",
+                "chown -R jenkins:jenkins /var/lib/jenkins\n",
+                "java -jar jenkins-cli.jar -s http://localhost:8080 install-plugin git git-client s3 awseb-deployment-plugin codedeploy -deploy -restart && sleep 30\n",
+                "# All is well so signal success\n",
+                "/opt/aws/bin/cfn-signal -s true '",
+                {
+                  "Ref": "CIInstanceWaitHandle01"
+                },
+                "'\n"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "CommandHost": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "DEVPublicSubnet",
+        "CommandHostSecurityGroup",
+        "DEVAttachGateway",
+        "s3ArtifactBucket"
+      ],
+      "Properties": {
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "IamInstanceProfile": {
+          "Ref": "CommandHostEC2InstanceProfile"
+        },
+        "ImageId": {
+          "Fn::FindInMap": [
+            "AmazonLinuxAMI",
+            {
+              "Ref": "AWS::Region"
+            },
+            "AMI"
+          ]
+        },
+        "InstanceType": "t2.micro",
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": "true",
+            "SubnetId": {
+              "Ref": "DEVPublicSubnet"
+            },
+            "GroupSet": [
+              {
+                "Ref": "CommandHostSecurityGroup"
+              }
+            ]
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Command Host"
+          },
+          {
+            "Key": "DeploymentType",
+            "Value": "Development"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -x\n",
+                "yum update -y\n",
+                "#Install Git, apache, and php\n",
+                "yum install -y git httpd php\n",
+                "sleep 15 && service httpd start\n",
+                "#Set up environment variables\n",
+                "export REGION=",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "export SUBNET_ID=",
+                {
+                  "Ref": "DEVPublicSubnet"
+                },
+                "\n",
+                "export KEYNAME=",
+                {
+                  "Ref": "KeyName"
+                },
+                "\n",
+                "export S3BUCKET=",
+                {
+                  "Ref": "s3ArtifactBucket"
+                },
+                "\n",
+                "# Setup hybrid permissions for ec2-user and apache\n",
+                "usermod -a -G apache ec2-user && chmod -R 2775 /var/www\n",
+                "mkdir /opt/git /opt/git/ci-project /opt/git/ci-project/cfn /opt/git/ci-project/php\n",
+		"echo > /opt/git/ci-project/php/index.php && echo > /opt/git/ci-project/php/errorpage.php\n",
+		"chown -R ec2-user:apache /opt/git\n",
+                "# Update suders file to not require a TTY for sudo.\n",
+                "sed -i 's/^Defaults    requiretty/#&/' /etc/sudoers\n",
+                "mkdir /home/ec2-user/.aws \n",
+                "cat > /home/ec2-user/.aws/config <<EOF\n",
+                "[default]\n",
+                "region = ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "EOF\n",
+                "chown -R ec2-user:ec2-user /home/ec2-user/.aws\n",
+                "# Generate ssh key for integration with Git instance\n",
+                "ssh-keygen -b 2048 -t rsa -f /home/ec2-user/.ssh/id_rsa -q -N '' && chown -R ec2-user:ec2-user /home/ec2-user\n",
+                "aws s3 cp /home/ec2-user/.ssh/id_rsa.pub s3://$S3BUCKET/keys/operations-id_rsa.pub  --region ",
+                {
+                  "Ref": "AWS::Region"
+                }, "\n",
+                "echo \"export KEYNAME=$KEYNAME\" >> /home/ec2-user/.bash_profile\n",
+                "echo \"export ARTIFACT_BUCKET=$S3BUCKET\" >> /home/ec2-user/.bash_profile\n",
+                "echo \"export REGION=$REGION\" >> /home/ec2-user/.bash_profile\n",
+                "# All is well so signal success\n",
+                "/opt/aws/bin/cfn-signal -s true '",
+                {
+                  "Ref": "CommandHostWaitHandle01"
+                },
+                "'\n"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "GitInstance": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "CommandHostWaitCondition01",
+        "CIInstanceWaitCondition01"
+      ],
+      "Properties": {
+        "KeyName": {
+          "Ref": "KeyName"
+        },
+        "IamInstanceProfile": {
+          "Ref": "GitInstanceEC2InstanceProfile"
+        },
+        "ImageId": {
+          "Fn::FindInMap": [
+            "AmazonLinuxAMI",
+            {
+              "Ref": "AWS::Region"
+            },
+            "AMI"
+          ]
+        },
+        "InstanceType": "t2.micro",
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": "true",
+            "SubnetId": {
+              "Ref": "DEVPublicSubnet"
+            },
+            "GroupSet": [
+              {
+                "Ref": "GitInstanceSecurityGroup"
+              }
+            ]
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Git-Instance"
+          },
+          {
+            "Key": "DeploymentType",
+            "Value": "Development"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -x\n",
+                "yum update -y\n",
+                "#Install Git\n",
+                "yum install -y git\n",
+                "sleep 15\n",
+                "#Set up environment variables\n",
+                "export REGION=",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "export S3BUCKET=",
+                {
+                  "Ref": "s3ArtifactBucket"
+                },
+                "\n",
+                "# Update suders file to not require a TTY for sudo.\n",
+                "sed -i 's/^Defaults    requiretty/#&/' /etc/sudoers\n",
+                "mkdir /home/ec2-user/.aws \n",
+                "cat > /home/ec2-user/.aws/config <<EOF\n",
+                "[default]\n",
+                "region = ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "EOF\n",
+                "chown -R ec2-user:ec2-user /home/ec2-user/.aws\n",
+                "# Obtain pub keys for Operations and Jenkins instances\n",
+                "aws s3 cp s3://$S3BUCKET/keys/jenkins-id_rsa.pub /home/ec2-user/jenkins-id_rsa.pub --region ",
+                {
+                  "Ref": "AWS::Region"
+                }, "\n",
+                "aws s3 cp s3://$S3BUCKET/keys/operations-id_rsa.pub /home/ec2-user/operations-id_rsa.pub  --region ",
+                {
+                  "Ref": "AWS::Region"
+                }, "\n",
+                "adduser git && sudo -i -u git mkdir /home/git/.ssh && chmod 700 /home/git/.ssh\n",
+                "sudo -i -u git touch /home/git/.ssh/authorized_keys && chmod 600 /home/git/.ssh/authorized_keys\n",
+                "cat /home/ec2-user/operations-id_rsa.pub >> /home/git/.ssh/authorized_keys\n",
+                "cat /home/ec2-user/jenkins-id_rsa.pub >> /home/git/.ssh/authorized_keys\n",
+                "mkdir /opt/git /opt/git/ci-project.git && chown -R git:git /opt/git\n",
+                "sudo -i -u git /usr/bin/git init /opt/git/ci-project.git --bare\n",
+                "chown -R git:git /home/git\n",
+                "# All is well so signal success\n",
+                "/opt/aws/bin/cfn-signal -s true '",
+                {
+                  "Ref": "GitInstanceWaitHandle01"
+                },
+                "'\n"
+              ]
+            ]
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "CIInstanceURL": {
+      "Description": "URL for the newly created Continuous Integrations instance",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "http://",
+            {
+              "Fn::GetAtt": [
+                "CIInstance",
+                "PublicDnsName"
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    "GitInstancePrivateIP" : {
+      "Description" : "The private IP address of the Git instance",
+      "Value" : {
+	"Fn::GetAtt" : [ "GitInstance", "PrivateIp" ] }
+    },
+    "GitInstancePublicIP" : {
+      "Description" : "The public IP address of the Git instance",
+      "Value" : {
+	"Fn::GetAtt" : [ "GitInstance", "PublicIp" ] }
+    },
+    "CIInstancePublicIP" : {
+      "Description" : "The public IP address of the CI / Jenkins instance",
+      "Value" : {
+	"Fn::GetAtt" : [ "CIInstance", "PublicIp" ] }
+    },
+    "CommandHostPublicIP" : {
+      "Description" : "The public IP address of the Command Host",
+      "Value" : {
+	"Fn::GetAtt" : [ "CommandHost", "PublicIp" ] }
+    }
+  }
+}

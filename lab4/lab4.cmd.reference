@@ -1,0 +1,252 @@
+DevOps Engineering on AWS: Lab 4 - Using AWS CodeDeploy, AWS CloudFormation, and Auto Scaling - v1.1
+
+==================================================================================================================
+
+Using this command reference.
+
+==================================================================================================================
+
+
+1. Locate the section you need. Each section in this file matches a section in the lab instructions.
+
+2. Replace items in angle brackets - < > - with appropriate values. For example, in this command you would replace the value - <JobFlowID> - (including the angle brackets) with the parameter indicated in the lab instructions:
+
+elastic-mapreduce --list <JobFlowID>. You can also use find and replace to change bracketed parameters in bulk.
+
+3. Do NOT enable the Word Wrap feature in Windows Notepad or the text editor you use to view this file.
+
+
+++++1. Task: Deploying an Application with AWS CodeDeploy
+
+
+==================================================================================================================
+1.2: Configure Your Lab Account for AWS CodeDeploy
+==================================================================================================================
+
+1.2.2 Examine the contents of the create-roles.sh file
+
+cat create-roles.sh
+
+1.2.3  Create the roles required for AWS CodeDeploy
+
+./create-roles.sh
+
+==================================================================================================================
+1.3 Deploy Your Sample Application
+==================================================================================================================
+
+1.3.1 Unzip the ec2-info.zip file
+
+unzip ec2-info.zip
+
+1.3.4 Create an Amazon S3 bucket
+
+aws s3 mb s3://<s3-bucket-name>
+
+1.3.5 Create your AWS CodeDeploy deployment
+
+aws deploy create-application --application-name "CodeDeployTest"
+
+1.3.6 Create the deployment group
+
+aws deploy create-deployment-group --application-name "CodeDeployTest" --deployment-config-name "CodeDeployDefault.AllAtOnce" --service-role-arn <code-deploy-role-arn> --deployment-group-name "CodeDeployGroup1" --ec2-tag-filters Key=CodeDeployConfigured,Value=Yes,Type=KEY_AND_VALUE
+
+1.3.8 Bundle and push your application to Amazon S3
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://<s3-bucket-name>/CodeDeployTest
+
+1.3.10 Track status of deployment
+
+aws deploy get-deployment --deployment-id <deployment-id> --query 'deploymentInfo.status'
+
+1.3.11a Obtain the instance ID to which your application was deployed
+
+instanceId=$(aws deploy list-deployment-instances --deployment-id <deployment-id> --query "instancesList[0]" --output text)
+
+1.3.11b Obtain the value of the public IP address
+
+aws ec2 describe-instances --instance-ids $instanceId --query 'Reservations[0].Instances[0].PublicIpAddress' --output text
+
+
+
+==================================================================================================================
+1.4 Review and Instantiate the Auto Scaling Template
+==================================================================================================================
+
+1.4.1 View AWS CloudFormation template
+
+https://us-west-2-aws-training.s3.amazonaws.com/awsu-ilt/devops/v1.1/lab-4-codedeploy/static/lab-4-codedeploy-autoscaling.template
+
+1.4.2 Get current key name
+
+curl --silent http://169.254.169.254/latest/meta-data/public-keys/ | sed -n 's/0=\(.*\)$/\1\n/p'
+
+1.4.3 Start up your Test VPC environment
+
+aws cloudformation create-stack --stack-name CodeDeployAutoScaling --template-url https://us-west-2-aws-training.s3.amazonaws.com/awsu-ilt/devops/v1.1/lab-4-codedeploy/static/lab-4-codedeploy-autoscaling.template --parameters ParameterKey=KeyName,ParameterValue=<key-name> --capabilities CAPABILITY_IAM
+
+1.4.4 Check the status of your stack
+
+aws cloudformation describe-stacks --stack-name CodeDeployAutoScaling --query 'Stacks[0].StackStatus'
+
+==================================================================================================================
+1.5 Deploy Your Application to an Auto Scaling Group
+==================================================================================================================
+
+1.5.1 Get name of auto scaling group from stack
+
+aws cloudformation describe-stacks --stack-name CodeDeployAutoScaling --query 'Stacks[0].Outputs[?OutputKey==`AppAutoScalingGroupName`].OutputValue' --output text
+
+1.5.2 Create a new deployment group
+
+aws deploy create-deployment-group --application-name CodeDeployTest --auto-scaling-groups <autoscaling-group-name> --deployment-group-name CodeDeployGroup-AS --deployment-config-name CodeDeployDefault.AllAtOnce --service-role-arn <code-deploy-role-arn>
+
+1.5.3 Execute the push again to get the deployment command
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://<s3-bucket-name>/CodeDeployTest
+
+1.5.5 Monitor the status of your deployment
+
+aws deploy get-deployment --deployment-id <deployment-id>
+
+1.5.6 Obtain the endpoint of the ELB
+
+aws cloudformation describe-stacks --stack-name CodeDeployAutoScaling --query 'Stacks[0].Outputs[?OutputKey==`ELBEndpoint`].OutputValue' --output text
+
+==================================================================================================================
+1.6 Simulate Scaling on Your AWS CodeDeploy Application
+==================================================================================================================
+
+1.6.1 List the current number of deployments for your Auto Scaling deployment group
+
+aws deploy list-deployments --application-name CodeDeployTest --deployment-group-name CodeDeployGroup-AS
+
+1.6.2 Change the desired capacity for the Auto Scaling group
+
+aws autoscaling set-desired-capacity --auto-scaling-group-name <autoscaling-group-name> --desired-capacity 2
+
+1.6.3 Verify the number of deployments
+
+aws deploy list-deployments --application-name CodeDeployTest --deployment-group-name CodeDeployGroup-AS
+
+
+
+++++2. Challenge: Verify Your Deployment
+
+==================================================================================================================
+2.1 Add a Validation Failure to Your Application
+==================================================================================================================
+
+2.1.1 Open up the validate_service.sh script  for editing
+
+nano scripts/validate_service.sh
+
+2.1.2 Copy the following file into validate_service.sh
+
+#!/bin/bash
+
+exit 1
+
+2.1.4 Add the following to appspec.yml
+
+  ValidateService:
+    - location: scripts/validate_service.sh
+      timeout: 300
+      runas: root
+
+2.1.7 Change deployment config default
+
+aws deploy update-deployment-group --application-name CodeDeployTest --current-deployment-group-name CodeDeployGroup-AS --deployment-config-name CodeDeployDefault.OneAtATime
+
+2.1.8 Push new revision
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://<s3-bucket-name>/CodeDeployTest
+
+2.1.10 Check on the status of your deployment
+
+aws deploy get-deployment --deployment-id <deployment-id>
+
+==================================================================================================================
+2.2 Test a Successful Validation
+==================================================================================================================
+
+2.2.4 Push your latest revision
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://<s3-bucket-name>/CodeDeployTest
+
+2.2.6 Check on the status of your deployment
+
+aws deploy get-deployment --deployment-id <deployment-id>
+
+==================================================================================================================
+2.3 Test a Successful Validation
+==================================================================================================================
+
+2.3.2 Create a more detailed validate_service.sh script
+
+#!/bin/bash
+
+file="/var/www/html/index.php"
+if [ -f "$file" ]
+then
+        touch /var/www/html/validated.txt
+        exit 0
+else
+        if [ -f "/var/www/html/validated.txt" ]
+        then
+                rm /var/www/html/validated.txt
+        fi
+        exit 1
+fi
+
+2.3.3 Push your latest revision
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://<s3-bucket-name>/CodeDeployTest
+
+2.3.5 Check deployment status
+
+aws deploy get-deployment --deployment-id <deployment-id>
+
+2.3.6 Obtain the name of your load balancer
+
+aws elb describe-load-balancers --query 'LoadBalancerDescriptions[0].LoadBalancerName'
+
+2.3.7 Configure a new health check
+
+aws elb configure-health-check --load-balancer-name <load-balancer-name> --health-check Target=HTTP:80/validated.txt,Interval=15,UnhealthyThreshold=2,HealthyThreshold=2,Timeout=3
+
+2.3.8 Describe the health of your load balancers
+
+aws elb describe-instance-health --load-balancer-name <load-balancer-name>
+
+2.3.9 Create a failure
+
+#!/bin/bash
+
+file="/var/www/html/indexdoesnotexist.php"
+if [ -f "$file" ]
+then
+        touch /var/www/html/validated.txt
+        exit 0
+else
+        if [ -f "/var/www/html/validated.txt" ]
+        then
+                rm /var/www/html/validated.txt
+        fi
+        exit 1
+fi
+
+2.3.10 Push your latest revision
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://<s3-bucket-name>/CodeDeployTest
+
+2.3.12 Check deployment status
+
+aws deploy get-deployment --deployment-id <deployment-id>
+
+2.3.13 Check the status of your load balancer instances
+
+aws elb describe-instance-health --load-balancer-name <load-balancer-name>
+
+
+© 2015 Amazon Web Services, Inc. or its affiliates. All rights reserved.

@@ -1,0 +1,71 @@
+DevOps Engineering on AWS: Lab 5 - Using AWS OpsWorks - v1.1
+
+==================================================================================================================
+
+Using this command reference.
+
+==================================================================================================================
+
+
+1. Locate the section you need. Each section in this file matches a section in the lab instructions.
+
+2. Replace items in angle brackets - < > - with appropriate values. For example, in this command you would replace the value - <JobFlowID> - (including the angle brackets) with the parameter indicated in the lab instructions:
+
+elastic-mapreduce --list <JobFlowID>. You can also use find and replace to change bracketed parameters in bulk.
+
+3. Do NOT enable the Word Wrap feature in Windows Notepad or the text editor you use to view this file.
+
+
+++++1. Task: Deploying an Application with AWS CodeDeploy
+
+==================================================================================================================
+1.1: Confirm the RDS database instance
+==================================================================================================================
+
+1.1.6 Install a MySQL client
+
+sudo yum install -y mysql
+
+1.1.7 Test database connectivity
+
+mysql -u wpuser -p -h <DatabaseEndpoint>
+
+1.1.9 From the MySQL prompt enter the following.
+
+show databases;
+
+==================================================================================================================
+1.2: Create the AWS OpsWorks Stack and Layers
+==================================================================================================================
+
+1.2.13 Repository URL
+
+https://us-west-2-aws-training.s3.amazonaws.com/awsu-ilt/devops/v1.1/lab-5-opsworks/static/cookbooks-master.zip
+
+==================================================================================================================
+1.3: Create the AWS OpsWorks Application
+==================================================================================================================
+
+1.3.3 Location of the WordPress application
+
+https://us-west-2-aws-training.s3.amazonaws.com/awsu-ilt/devops/v1.1/lab-5-opsworks/static/wordpress-3.9.1.zip
+
+==================================================================================================================
+2.1: Update and Configure the WordPress Application
+==================================================================================================================
+
+2.1.7 Updated Repository URL
+
+https://us-west-2-aws-training.s3.amazonaws.com/awsu-ilt/devops/v1.1/lab-5-opsworks/static/wordpress-3.9.1-2.zip
+
+2.1.13 Custom JSON
+
+{
+  "wordpress" :
+  {
+    "cachenode" : "<CACHE ENDPOINT>"
+  }
+}
+
+
+© 2015 Amazon Web Services, Inc. or its affiliates. All rights reserved.

@@ -1,0 +1,58 @@
+ec2-service-role-arn:            arn:aws:iam::856086410948:role/CodeDeploy-L1445457935-ec2-service-role
+
+code-deploy-role-arn:    arn:aws:iam::856086410948:role/CodeDeploy-L1445457937-code-deploy-role
+
+
+aws deploy create-deployment-group --application-name "CodeDeployTest" --deployment-config-name "CodeDeployDefault.AllAtOnce" --service-role-arn arn:aws:iam::856086410948:role/CodeDeploy-L1445457937-code-deploy-role --deployment-group-name "CodeDeployGroup1" --ec2-tag-filters Key=CodeDeployConfigured,Value=Yes,Type=KEY_AND_VALUE
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://mgupta/CodeDeployTest
+
+aws deploy create-deployment --application-name CodeDeployTest --s3-location bucket=mgupta,key=CodeDeployTest,bundleType=zip,eTag="ad8d6a3333676eecbc5e83a41d875f2c" --deployment-group-name CodeDeployGroup1 --deployment-config-name CodeDeployDefault.AllAtOnce --description "Trying first deployment"
+
+aws deploy get-deployment --deployment-id d-TLC8B64TB --query 'deploymentInfo.status'
+
+instanceId=$(aws deploy list-deployment-instances --deployment-id d-TLC8B64TB --query "instancesList[0]" --output text)
+
+aws cloudformation create-stack --stack-name CodeDeployAutoScaling --template-url https://us-west-2-aws-training.s3.amazonaws.com/awsu-ilt/devops/v1.1/lab-4-codedeploy/static/lab-4-codedeploy-autoscaling.template --parameters ParameterKey=KeyName,ParameterValue=qwikLABS-L921-346949 --capabilities CAPABILITY_IAM
+
+>> --auto-scaling-group-name
+CodeDeployAutoScaling-AppAutoScalingGroup-JLMVDXRCPZA9
+
+aws deploy create-deployment-group --application-name CodeDeployTest --auto-scaling-groups CodeDeployAutoScaling-AppAutoScalingGroup-JLMVDXRCPZA9 --deployment-group-name CodeDeployGroup-AS --deployment-config-name CodeDeployDefault.AllAtOnce --service-role-arn arn:aws:iam::856086410948:role/CodeDeploy-L1445457937-code-deploy-role
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://mgupta/CodeDeployTest
+
+aws deploy create-deployment --application-name CodeDeployTest --s3-location bucket=mgupta,key=CodeDeployTest,bundleType=zip,eTag="ad8d6a3333676eecbc5e83a41d875f2c" --deployment-group-name CodeDeployGroup-AS --deployment-config-name CodeDeployDefault.AllAtOnce --description "Creating auto-scaled deployment"
+
+aws deploy get-deployment --deployment-id d-F3G2Q49TB
+
+aws autoscaling set-desired-capacity --auto-scaling-group-name CodeDeployAutoScaling-AppAutoScalingGroup-JLMVDXRCPZA9 --desired-capacity 2
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://mgupta/CodeDeployTest
+
+aws deploy create-deployment --application-name CodeDeployTest --s3-location bucket=mgupta,key=CodeDeployTest,bundleType=zip,eTag="e160f678dbf2dafe49a7ceda1c8685e9" --deployment-group-name CodeDeployGroup-AS --deployment-config-name CodeDeployDefault.OneAtATime --description "Redeploying code with validation errors"
+
+aws deploy get-deployment --deployment-id d-80ZQD9CTB
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://mgupta/CodeDeployTest
+
+aws deploy create-deployment --application-name CodeDeployTest --s3-location bucket=mgupta,key=CodeDeployTest,bundleType=zip,eTag="890e384859d8e9b7f5b35bf1751650f0" --deployment-group-name CodeDeployGroup-AS --deployment-config-name CodeDeployDefault.OneAtATime --description "Redeploying code with NO validation errors"
+
+aws deploy get-deployment --deployment-id d-3CCSMRATB
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://mgupta/CodeDeployTest
+
+aws deploy create-deployment --application-name CodeDeployTest --s3-location bucket=mgupta,key=CodeDeployTest,bundleType=zip,eTag="89f63da901d6ec3eeea5366f30355e4f" --deployment-group-name CodeDeployGroup-AS --deployment-config-name CodeDeployDefault.OneAtATime --description "Redeploying app with new validation script"
+
+aws deploy get-deployment --deployment-id d-H7AELV5TB
+
+-- load balancer
+"CodeDeplo-AppLoadB-UPF8FFARDVUZ"
+
+aws elb configure-health-check --load-balancer-name "CodeDeplo-AppLoadB-UPF8FFARDVUZ" --health-check Target=HTTP:80/validated.txt,Interval=15,UnhealthyThreshold=2,HealthyThreshold=2,Timeout=3
+
+aws elb describe-instance-health --load-balancer-name "CodeDeplo-AppLoadB-UPF8FFARDVUZ"
+
+aws deploy push --application-name "CodeDeployTest" --description "A sample deployment" --s3-location s3://mgupta/CodeDeployTest
+
+

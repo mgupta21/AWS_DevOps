@@ -1,0 +1,14 @@
+{
+"Version": "2008-10-17",
+  "Statement": [
+  {
+    "Sid": "1",
+    "Effect": "Allow",
+    "Principal": {
+        "Service": [
+          "codedeploy.us-west-2.amazonaws.com"
+        ]
+    },
+    "Action": "sts:AssumeRole"
+  }]
+}

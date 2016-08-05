@@ -1,0 +1,13 @@
+{
+  "Statement": [
+  {
+    "Resource": "*",
+    "Action": [
+      "autoscaling:Describe*",
+      "cloudformation:Describe*",
+      "cloudformation:GetTemplate",
+      "s3:Get*"
+    ],
+    "Effect": "Allow"
+  }]
+}

@@ -1,0 +1,62 @@
+DevOps Engineering on AWS: Lab 2 - Infrastructure as Code: Verifying AWS CloudFormation Deployments - Linux - v1.1
+
+==================================================================================================================
+
+Using this command reference.
+
+==================================================================================================================
+
+
+1. Locate the section you need. Each section in this file matches a section in the lab instructions.
+
+2. Replace items in angle brackets - < > - with appropriate values. For example, in this command you would replace the value - <JobFlowID> - (including the angle brackets) with the parameter indicated in the lab instructions:
+
+elastic-mapreduce --list <JobFlowID>. You can also use find and replace to change bracketed parameters in bulk.
+
+3. Do NOT enable the Word Wrap feature in Windows Notepad or the text editor you use to view this file.
+
+
+++++1. Task: Using AWS CloudFormation Custom Resources
+
+==================================================================================================================
+1.1 Review the AWS Lambda Function
+==================================================================================================================
+
+1.1.12 Create the execution role for AWS Lambda
+
+node lambda-iam-setup.js
+
+
+==================================================================================================================
+1.2 Test Your AWS Lambda Function Locally
+==================================================================================================================
+
+1.2.5 Test the function locally
+
+node _testdriver.js cfn-verifier-lambda <role-arn>
+
+
+==================================================================================================================
+1.3 Publish AWS Lambda Function
+==================================================================================================================
+
+
+1.3.1 Create Lambda package directory
+
+zip -rq cfn-verifier-lambda.zip cfn-verifier-lambda.js node_modules
+
+1.3.2 Publish the AWS Lambda function
+
+aws lambda create-function --function-name "CfnVerifierLambda" --role <role-arn> --runtime nodejs --handler cfn-verifier-lambda.handler --zip-file fileb://cfn-verifier-lambda.zip
+
+
+==================================================================================================================
+1.4 Run Your Full Environment
+==================================================================================================================
+
+1.4.1 Download and examine the test script
+
+https://d2lrzjb0vjvpn5.cloudfront.net/devops/v1.1/lab-2-iac/static/lab-2-test-vpc-lambda.template
+
+
+© 2015 Amazon Web Services, Inc. or its affiliates. All rights reserved.

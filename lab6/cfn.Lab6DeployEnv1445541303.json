@@ -1,0 +1,536 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "DevOps - Lab 6: Template for deploying custom-built AMI to production or production-like environment.",
+    "Parameters": {
+        "InstanceType": {
+            "AllowedValues": [
+                "t2.micro",
+                "m3.medium",
+                "m3.large"
+            ],
+            "Default": "t2.micro",
+            "Description": "EC2 instance type, e.g. m3.medium",
+            "Type": "String"
+        },
+        "KeyName": {
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        },
+        "AMIID": {
+            "Description": "The AMI ID for the custom image created by the pipeline.",
+            "Type": "String"
+        },
+        "APPSTACK": {
+            "Description": "Application Name and Version being deployed.",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "masterVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": "10.192.0.0/16",
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        }
+                    },
+                    {
+                        "Key": "Name",
+                        "Value": "App VPC"
+                    }
+                ]
+            }
+        },
+        "InternetGateway": {
+            "Type": "AWS::EC2::InternetGateway",
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        }
+                    }
+                ]
+            }
+        },
+        "AttachGateway": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "InternetGatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            }
+        },
+        "PubRouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        }
+                    },
+                    {
+                        "Key": "Name",
+                        "Value": "PubRoutes"
+                    }
+                ]
+            }
+        },
+        "PubRoute": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": "AttachGateway",
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "PubRouteTable"
+                },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            }
+        },
+        "PubSubARouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PublicSubnetA"
+                },
+                "RouteTableId": {
+                    "Ref": "PubRouteTable"
+                }
+            }
+        },
+        "PubSubBRouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PublicSubnetB"
+                },
+                "RouteTableId": {
+                    "Ref": "PubRouteTable"
+                }
+            }
+        },
+        "PrivRouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    },
+                    {
+                        "Key": "Name",
+                        "Value": "PrivRoutes"
+                    }
+                ]
+            }
+        },
+        "PrivSubARouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PrivateSubnetA"
+                },
+                "RouteTableId": {
+                    "Ref": "PrivRouteTable"
+                }
+            }
+        },
+        "PrivSubBRouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PrivateSubnetB"
+                },
+                "RouteTableId": {
+                    "Ref": "PrivRouteTable"
+                }
+            }
+        },
+        "PublicSubnetA": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "CidrBlock": "10.192.0.0/24",
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "0",
+                        {
+                            "Fn::GetAZs": {
+                                "Ref": "AWS::Region"
+                            }
+                        }
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        }
+                    },
+                    {
+                        "Key": "Name",
+                        "Value": "PubA"
+                    }
+                ]
+            }
+        },
+        "PublicSubnetB": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "CidrBlock": "10.192.10.0/24",
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "1",
+                        {
+                            "Fn::GetAZs": {
+                                "Ref": "AWS::Region"
+                            }
+                        }
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        }
+                    },
+                    {
+                        "Key": "Name",
+                        "Value": "PubB"
+                    }
+                ]
+            }
+        },
+        "PrivateSubnetA": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "CidrBlock": "10.192.100.0/24",
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "0",
+                        {
+                            "Fn::GetAZs": {
+                                "Ref": "AWS::Region"
+                            }
+                        }
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        }
+                    },
+                    {
+                        "Key": "Network",
+                        "Value": "PrivateSubnetA"
+                    }
+                ]
+            }
+        },
+        "PrivateSubnetB": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "CidrBlock": "10.192.110.0/24",
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "1",
+                        {
+                            "Fn::GetAZs": {
+                                "Ref": "AWS::Region"
+                            }
+                        }
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        }
+                    },
+                    {
+                        "Key": "Network",
+                        "Value": "PrivateSubnetB"
+                    }
+                ]
+            }
+        },
+        "SGAppTier": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Allow http from ELB to App tier",
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "SourceSecurityGroupId": {
+                            "Ref": "ELBSecurityGroup"
+                        }
+                    }
+                ]
+            }
+        },
+        "ELBSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Allow public http traffic to the Elastic Load Balancer",
+                "VpcId": {
+                    "Ref": "masterVPC"
+                },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "WebELB": {
+            "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+            "Properties": {
+                "Subnets": [
+                    {
+                        "Ref": "PublicSubnetA"
+                    },
+                    {
+                        "Ref": "PublicSubnetB"
+                    }
+                ],
+                "Listeners": [
+                    {
+                        "LoadBalancerPort": "80",
+                        "InstancePort": "80",
+                        "Protocol": "HTTP"
+                    }
+                ],
+                "HealthCheck": {
+                    "Target": "HTTP:80/index.php",
+                    "HealthyThreshold": "3",
+                    "UnhealthyThreshold": "5",
+                    "Interval": "30",
+                    "Timeout": "5"
+                },
+                "CrossZone": "true",
+                "SecurityGroups": [
+                    {
+                        "Fn::GetAtt": [
+                            "ELBSecurityGroup",
+                            "GroupId"
+                        ]
+                    }
+                ]
+            }
+        },
+        "WebASConfig": {
+            "Type": "AWS::AutoScaling::LaunchConfiguration",
+            "Properties": {
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "AssociatePublicIpAddress": "true",
+                "ImageId": {
+                    "Ref": "AMIID"
+                },
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "SecurityGroups": [
+                    {
+                        "Ref": "SGAppTier"
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash\n",
+                                "# Update cloudformation bootstrapping tools and start apache\n",
+                                "yum update aws-cfn-bootstrap\n",
+                                "/opt/aws/bin/cfn-signal -e 0 --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                " --resource WebASGroup",
+                                " --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "service httpd start\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        },
+        "WebASGroup": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "VPCZoneIdentifier": [
+                    {
+                        "Ref": "PublicSubnetA"
+                    },
+                    {
+                        "Ref": "PublicSubnetB"
+                    }
+                ],
+                "LaunchConfigurationName": {
+                    "Ref": "WebASConfig"
+                },
+                "LoadBalancerNames": [
+                    {
+                        "Ref": "WebELB"
+                    }
+                ],
+                "MaxSize": "4",
+                "MinSize": "1",
+                "DesiredCapacity": "1",
+                "HealthCheckType": "ELB",
+                "HealthCheckGracePeriod": "600",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Ref": "APPSTACK"
+                        },
+                        "PropagateAtLaunch": "true"
+                    }
+                ]
+            },
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Count": "1",
+                    "Timeout": "PT15M"
+                }
+            }
+        },
+        "ASScaleOut": {
+            "Type": "AWS::AutoScaling::ScalingPolicy",
+            "Properties": {
+                "AdjustmentType": "PercentChangeInCapacity",
+                "AutoScalingGroupName": {
+                    "Ref": "WebASGroup"
+                },
+                "Cooldown": "300",
+                "MinAdjustmentStep": "1",
+                "ScalingAdjustment": "100"
+            }
+        },
+        "ASScaleIn": {
+            "Type": "AWS::AutoScaling::ScalingPolicy",
+            "Properties": {
+                "AdjustmentType": "PercentChangeInCapacity",
+                "AutoScalingGroupName": {
+                    "Ref": "WebASGroup"
+                },
+                "Cooldown": "300",
+                "MinAdjustmentStep": "1",
+                "ScalingAdjustment": "-100"
+            }
+        },
+        "CPUAlarmHigh": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "EvaluationPeriods": "5",
+                "Statistic": "Average",
+                "Threshold": "80",
+                "AlarmDescription": "Alarm if CPU too high or metric disappears indicating instance is down",
+                "Period": "60",
+                "AlarmActions": [
+                    {
+                        "Ref": "ASScaleOut"
+                    }
+                ],
+                "Namespace": "AWS/EC2",
+                "Dimensions": [
+                    {
+                        "Name": "AutoScalingGroupName",
+                        "Value": {
+                            "Ref": "WebASGroup"
+                        }
+                    }
+                ],
+                "ComparisonOperator": "GreaterThanThreshold",
+                "MetricName": "CPUUtilization"
+            }
+        },
+        "CPUAlarmLow": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "EvaluationPeriods": "5",
+                "Statistic": "Average",
+                "Threshold": "40",
+                "AlarmDescription": "Alarm if CPU too high or metric disappears indicating instance is down",
+                "Period": "60",
+                "AlarmActions": [
+                    {
+                        "Ref": "ASScaleIn"
+                    }
+                ],
+                "Namespace": "AWS/EC2",
+                "Dimensions": [
+                    {
+                        "Name": "AutoScalingGroupName",
+                        "Value": {
+                            "Ref": "WebASGroup"
+                        }
+                    }
+                ],
+                "ComparisonOperator": "LessThanThreshold",
+                "MetricName": "CPUUtilization"
+            }
+        }
+    },
+    "Outputs": {
+        "ELB": {
+            "Description": "DNS of newly created ELB",
+            "Value": {
+                "Fn::GetAtt": [
+                    "WebELB",
+                    "DNSName"
+                ]
+            }
+        }
+    }
+}

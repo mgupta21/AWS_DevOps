@@ -1,0 +1,190 @@
+DevOps Engineering on AWS: Lab 3 - Continuous Integration - v1.1
+
+==================================================================================================================
+
+Using this command reference.
+
+==================================================================================================================
+
+
+1. Locate the section you need. Each section in this file matches a section in the lab instructions.
+
+2. Replace items in angle brackets - < > - with appropriate values. For example, in this command you would replace the value - <JobFlowID> - (including the angle brackets) with the parameter indicated in the lab instructions:
+
+elastic-mapreduce --list <JobFlowID>. You can also use find and replace to change bracketed parameters in bulk.
+
+3. Do NOT enable the Word Wrap feature in Windows Notepad or the text editor you use to view this file.
+
+
+++++1. Task: Initialize Continuous Integrations Framework
+
+==================================================================================================================
+1.2 Prepare the Git repository
+==================================================================================================================
+
+1.2.2 Navigate to the local CI directory
+
+cd /opt/git/ci-project
+
+1.2.3 Initialize local Git repository
+
+git init
+
+1.2.4 Retrieve sample content
+
+wget -O cfn/lab-3-app-test-env.template https://d2lrzjb0vjvpn5.cloudfront.net/devops/v1.1/lab-3-ci/static/lab-3-app-test-env.template
+
+wget -O ~/sample-app.tgz https://d2lrzjb0vjvpn5.cloudfront.net/devops/v1.1/lab-3-ci/static/sample-app.tgz
+
+1.2.5 Create simple text file
+
+printf "################################\n\nMain branch initialized `date`.\n\n" >> readme.txt
+
+1.2.6 Add files to Git repository
+
+git add .
+
+1.2.7 Commit files to Git repository
+
+git commit -m "Initializing Git master branch"
+
+1.2.8 Configure remote Git repository
+
+git remote add origin git@<GitPrivateIP>:/opt/git/ci-project.git
+
+1.2.9 Push your commits to the origin
+
+git push origin master
+
+==================================================================================================================
+1.3 Fork Branches
+==================================================================================================================
+
+1.3.1 Create symbolic link for unit testing
+
+sudo ln -s /opt/git/ci-project/php /var/www/html/php
+
+1.3.2 Create a new branch in our local Git repository
+
+git checkout -b newWidget
+
+1.3.3 Verify working branch
+
+git branch
+
+1.3.4 Update readme.txt
+
+printf "################################\n\nInitialized newWidget branch `date`.\n\n" >> readme.txt
+
+1.3.5 Add the readme file to a checkin
+
+git add readme.txt
+
+1.3.6 Commit the change
+
+git commit -m "Recorded creation of new branch in readme.txt"
+
+1.3.7 Push the commit to Git
+
+git push origin newWidget
+
+1.3.8 Display current content of the readme.txt file
+
+git show :readme.txt
+
+1.3.9 Switch branches
+
+git checkout master
+
+1.3.10 View readme.txt in the master branch
+
+git show :readme.txt
+
+1.3.11 Switch back to the newWidget branch
+
+git checkout newWidget
+
+1.3.12 Extract the contents of the sample app
+
+tar -xvf ~/sample-app.tgz -C /opt/git/ci-project/.
+
+==================================================================================================================
+1.4 Create Automated Validation Jobs
+==================================================================================================================
+
+1.4.6 Configure Repository URL
+
+git@<GitInstancePrivateIP>:/opt/git/ci-project.git
+
+1.4.11 Copy into the Schedule field
+
+*/1 * * * *
+
+1.4.14 Add validation script
+
+#!/bin/bash
+/var/lib/jenkins/script/simple-test.sh
+
+==================================================================================================================
+1.5 Validate and Repair
+==================================================================================================================
+
+1.5.5 Ensure correct working directory
+
+cd /opt/git/ci-project
+
+1.5.6 Open up file for editing
+
+vi cfn/lab-3-app-test-env.template
+
+1.5.9 Add the change to the newWidget branch
+
+git add cfn/lab-3-app-test-env.template
+
+1.5.10 Commit changes
+
+git commit -m "Corrected an issue with the test environment template"
+
+1.5.11 Push changes to Git
+
+git push origin newWidget
+
+==================================================================================================================
+1.6 Merge, Validate, and Deploy
+==================================================================================================================
+
+1.6.8 Jenkins shell command
+
+#!/bin/bash
+/var/lib/jenkins/script/test-build-deploy.sh
+
+1.6.10 Confirm the current branch
+
+git branch
+
+1.6.11 Add the changes
+
+git add .
+
+1.6.12 Commit the changes
+
+git commit -m "Completed v1.0 of sample app"
+
+1.6.13 Push the changes to the Git server
+
+git push origin newWidget
+
+1.6.15 Check out the master branch
+
+git checkout master
+
+1.6.16 Merge the newWidget branch into the master branch
+
+git merge newWidget
+
+1.6.17 Push the merged changes into the master branch
+
+git push origin master
+
+
+Â© 2015 Amazon Web Services, Inc. or its affiliates. All rights reserved.

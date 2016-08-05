@@ -1,0 +1,16 @@
+﻿{
+    "RequestType": "Create",
+    "ServiceToken": "arn:aws:sns:us-west-2:715610556435:CFNVerifierTopic",
+    "ResponseURL": "https://cloudformation-custom-resource-response-uswest2.s3-us-west-2.amazonaws.com/arn%3Aaws%3Acloudformation%3Aus-west-2%3A715610556435%3Astack/CFNVerifierTestScript2/3da9f3b0-25b3-11e5-8fde-500160d4da18%7CTestEnvironmentChecker1%7C4ce82440-3a8e-414b-8515-4d69e1e8f04b?AWSAccessKeyId=AKIAI4KYMPPRGIACET5Q&Expires=1436395959&Signature=AP1fqoZRYAZ1CHVet%2F9yvWL3DNw%3D",
+    "StackId": "arn:aws:cloudformation:us-west-2:715610556435:stack/CFNVerifierTestScript2/3da9f3b0-25b3-11e5-8fde-500160d4da18",
+    "RequestId": "4ce82440-3a8e-414b-8515-4d69e1e8f04b",
+    "LogicalResourceId": "TestEnvironmentChecker1",
+    "ResourceType": "Custom::TestEnvironmentChecker",
+    "ResourceProperties": {
+        "ServiceToken": "arn:aws:sns:us-west-2:715610556435:CFNVerifierTopic",
+        "UrlChecks": [
+            "http://aws.amazon.com/documentation/cloudformation/",
+            "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/Welcome.html"
+        ]
+    }
+}

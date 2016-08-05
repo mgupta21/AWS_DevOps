@@ -1,0 +1,2 @@
+endpoint: 
+qrxixopz96j6ce.cct2tvcxgzcy.us-west-2.rds.amazonaws.com:3306
